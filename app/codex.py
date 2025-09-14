@@ -105,11 +105,52 @@ async def run_codex(prompt: str, overrides: Optional[Dict] = None) -> AsyncItera
         raise CodexError(f"Unable to start codex process: {e}")
 
     try:
+        # Stateful filtering: suppress blocks after "User instructions:" until the next role line
+        suppress_instructions_block = False
         while True:
             line = await proc.stdout.readline()
             if not line:
                 break
-            cleaned = filter_codex_stdout_line(line.decode().rstrip())
+            raw = line.decode().rstrip()
+
+            # Detect the beginning of a system prompt dump printed by the CLI
+            # Example:
+            #   User instructions:
+            #   You are ...
+            #   ...
+            #   User: <message>
+            if not suppress_instructions_block:
+                # Trim to check prefix without altering original raw used below
+                chk = _TIMESTAMP_PREFIX.sub("", raw).strip()
+                if chk.startswith("User instructions:"):
+                    suppress_instructions_block = True
+                    # Drop the header line itself
+                    continue
+
+            # While inside the instructions block, drop all lines until reaching a role line or a separator
+            if suppress_instructions_block:
+                stripped = raw.strip()
+                # End of instructions block conditions
+                if stripped.startswith("User:"):
+                    suppress_instructions_block = False
+                    # Drop the user echo line entirely
+                    continue
+                if stripped.startswith("Assistant:"):
+                    suppress_instructions_block = False
+                    # If assistant content is on the same line, emit it (prefix removed)
+                    after = stripped[len("Assistant:"):].lstrip()
+                    if after:
+                        cleaned = filter_codex_stdout_line(after)
+                        if cleaned:
+                            yield cleaned
+                    continue
+                if stripped.startswith("--------") or stripped == "":
+                    suppress_instructions_block = False
+                    continue
+                # Inside instructions: drop
+                continue
+
+            cleaned = filter_codex_stdout_line(raw)
             if cleaned:
                 yield cleaned
         await asyncio.wait_for(proc.wait(), timeout=settings.timeout_seconds)
@@ -126,6 +167,8 @@ async def run_codex(prompt: str, overrides: Optional[Dict] = None) -> AsyncItera
 
 
 _TIMESTAMP_PREFIX = re.compile(r"^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[^\]]+\]\s*")
+# Loose timestamp-only line, e.g. "2025/09/15 06:53:40" or "2025-09-15 06:53:40"
+_LOOSE_TIMESTAMP_LINE = re.compile(r"^\s*\d{4}[-\/]\d{2}[-\/]\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s*$")
 
 _DROP_PREFIXES = (
     "OpenAI Codex v",
@@ -137,8 +180,6 @@ _DROP_PREFIXES = (
     "reasoning effort:",
     "reasoning summaries:",
     "User instructions:",
-    "User:",
-    "Assistant:",
     "tokens used:",
 )
 
@@ -153,6 +194,10 @@ def filter_codex_stdout_line(line: str) -> Optional[str]:
     if not line:
         return None
 
+    # Drop lines that are just timestamps
+    if _LOOSE_TIMESTAMP_LINE.match(line):
+        return None
+
     s = _TIMESTAMP_PREFIX.sub("", line).strip()
 
     # Known non-content noise lines
@@ -164,6 +209,12 @@ def filter_codex_stdout_line(line: str) -> Optional[str]:
     for p in _DROP_PREFIXES:
         if s.startswith(p):
             return None
+
+    # Drop user-echo lines, but keep assistant content if prefixed on same line
+    if s.startswith("User:"):
+        return None
+    if s.startswith("Assistant:"):
+        s = s[len("Assistant:"):].lstrip()
 
     # Remove leading 'codex' label if present (with or without separator)
     if lower.startswith("codex"):
