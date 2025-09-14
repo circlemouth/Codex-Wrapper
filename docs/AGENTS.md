@@ -11,6 +11,24 @@ pythonライブラリのインストールは必ずvenv仮想環境で行うこ�
 - 認証：`Authorization: Bearer <PROXY_API_KEY>`（未設定時は無認証で動作可能にする構成も可）
 - 提供モデル：`codex-cli`（見かけ上のモデル名）
 - サブモジュール：`submodules/codex` に Codex 本体（参考実装）
+- 対応API：`/v1/chat/completions`（提供済み）、`/v1/responses`（最小実装済み。詳細は `docs/RESPONSES_API_PLAN.md`）
+
+## Codex 認証パターン（OAuth / APIキー）
+
+- パターンA: OAuth（ChatGPT サインイン）
+  - 実行: サーバープロセスと同じOSユーザーで `codex login`
+  - 成果物: `$CODEX_HOME/auth.json`（既定 `~/.codex/auth.json`）に資格情報を保存
+  - ヘッドレス環境: SSHポートフォワード（`ssh -L 1455:localhost:1455 <user>@<host>`）でブラウザログイン、またはローカルでログインして `auth.json` をサーバーへコピー
+  - `OPENAI_API_KEY`: 不要
+
+- パターンB: APIキー（従量課金・代替）
+  - 実行: `codex login --api-key "<YOUR_OPENAI_API_KEY>"`
+  - 要件: Responses API に書き込み権限のある OpenAI API キー
+  - 注意: サーバー側で `CODEX_LOCAL_ONLY=1` を有効にしているとリモート `base_url`（OpenAI）は拒否されます。APIキー運用時は通常 `CODEX_LOCAL_ONLY=false` のままにしてください。
+
+補足
+- `CODEX_HOME` は OS の環境変数で設定（`.env` ではなく）。このAPIラッパーは Codex CLI が保存した `auth.json` を利用します。
+- `PROXY_API_KEY` はこのラッパーAPIの外部アクセス制御用で、Codex のログイン方式とは無関係です。
 
 ## サポート API
 
@@ -61,6 +79,33 @@ with client.chat.completions.create(
             delta = event.data.choices[0].delta
             if delta and delta.content:
                 print(delta.content, end="", flush=True)
+```
+
+## サンプル（Responses API）
+
+非ストリーム
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY")
+resp = client.responses.create(model="codex-cli", input="Say hello")
+print(resp.output[0].content[0].text)
+```
+
+ストリーム（SSE）
+```bash
+curl -N \
+  -H "Authorization: Bearer $PROXY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"codex-cli","input":"Say hello","stream":true}' \
+  http://localhost:8000/v1/responses
+```
+
+SSE イベント（最小）
+- `response.created` → 初期状態（status=in_progress）
+- `response.output_text.delta` → 差分文字列。`{"delta": "..."}`
+- `response.output_text.done` → 最終文字列。`{"text": "..."}`
+- `response.completed` → 最終オブジェクト
+- エラー時は `response.error` → その後 `[DONE]`
 ```
 
 ## サンプル（curl / SSE）
@@ -224,6 +269,10 @@ git submodule update --remote submodules/codex
 - 401：`PROXY_API_KEY` とヘッダを確認
 - 500（タイムアウト含む）：Codex 実行が長すぎる可能性。プロンプトを簡潔に、またはタイムアウト設定を調整
 - 429：レート制限到達。`RATE_LIMIT_PER_MINUTE` を調整
+- 出力に CLI サマリや `MCP client for ... failed to start` が混ざる:
+  - 非ストリームは `codex exec --json --output-last-message` で最終メッセージのみ返すためクリーンです。
+  - ストリームはサーバー側で人間向け見出し（`OpenAI Codex v`、`workdir:`、`model:`、`provider:`、`approval:`、`sandbox:`、`reasoning`、`User instructions:`、`User:`、`Assistant:`、`tokens used:`）や MCP 起動警告行をフィルタします。
+  - 根本対処: `~/.codex/config.toml` の `mcp_servers` を削除/コメントアウト（figma などの未設定サーバーが起動タイムアウトしないように）。
 ## Codex の TOML 設定
 
 - 場所: `$CODEX_HOME/config.toml`（未設定時は `~/.codex/config.toml`）
@@ -234,6 +283,6 @@ mkdir -p ~/.codex
 cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 ```
 
-- OpenAI を使う場合は `OPENAI_API_KEY` を設定。
+- OpenAI をAPIキー運用で使う場合は `OPENAI_API_KEY` を設定（OAuth運用では不要）。
 - Web 検索は `tools.web_search = true` を `config.toml` に記述。
 - MCP サーバーは `mcp_servers.<id>` で定義（stdio）。

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
 
 
@@ -44,3 +44,44 @@ class ChatCompletionResponse(BaseModel):
     object: str = "chat.completion"
     choices: List[ChatChoice]
     usage: Usage = Usage()
+
+
+# --- Responses API (minimal compatibility) ---
+
+class ResponsesReasoning(BaseModel):
+    effort: Optional[str] = None  # minimal | low | medium | high
+
+
+class ResponsesRequest(BaseModel):
+    model: Optional[str] = Field(default="codex-cli")
+    input: Any
+    stream: Optional[bool] = False
+    reasoning: Optional[ResponsesReasoning] = None
+
+
+class ResponsesOutputText(BaseModel):
+    type: Literal["output_text"] = "output_text"
+    text: str
+
+
+class ResponsesMessage(BaseModel):
+    id: str
+    type: Literal["message"] = "message"
+    role: str = "assistant"
+    content: List[ResponsesOutputText]
+
+
+class ResponsesUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+
+class ResponsesObject(BaseModel):
+    id: str
+    object: Literal["response"] = "response"
+    created: int
+    model: str = "codex-cli"
+    status: Literal["in_progress", "completed", "failed"] = "completed"
+    output: List[ResponsesMessage]
+    usage: ResponsesUsage = ResponsesUsage()

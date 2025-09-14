@@ -5,6 +5,7 @@ OpenAI 互換の最小 API で Codex CLI をラップする FastAPI サーバー
 - 参考サブモジュール：`submodules/codex`（https://github.com/openai/codex.git）
 - 実装計画：`docs/IMPLEMENTATION_PLAN.md`
 - エージェント向けガイド：`docs/AGENTS.md`
+ - Responses API 設計/進捗：`docs/RESPONSES_API_PLAN.md`
 
 ## クイックスタート
 
@@ -22,17 +23,46 @@ npm i -g @openai/codex
 brew install codex
 ```
 
-3) Codex の設定（OpenAI gpt-5 を使う例）
+3) Codex のログイン（選択: OAuth または API キー）
+
+Codex CLI の認証は CLI 側で行います。API ラッパー側に特別な設定は不要です。
+
+パターンA: OAuth（ChatGPT サインイン）
+
+```bash
+# サーバー（このAPIを起動するマシン）と同じOSユーザーで実行
+codex login
+```
+
+- ブラウザでサインイン完了後、資格情報が `$CODEX_HOME/auth.json`（既定 `~/.codex/auth.json`）に保存されます。
+- ヘッドレス/リモートの場合: 
+  - SSHポートフォワード: `ssh -L 1455:localhost:1455 <user>@<host>` → リモートで `codex login` → 表示URLをローカルブラウザで開く。
+  - ローカルでログインして `auth.json` をサーバーへコピー（`scp ~/.codex/auth.json user@host:~/.codex/auth.json`）。
+
+パターンB: API キー（従量課金・代替手段）
+
+```bash
+codex login --api-key "<YOUR_OPENAI_API_KEY>"
+```
+
+- Responses API に書き込み権限のある OpenAI API キーを使用します。
+- サーバーで `CODEX_LOCAL_ONLY=1` を有効にしている場合、組み込み OpenAI プロバイダのリモート `base_url` がブロックされ 400 になります。APIキー運用時は通常 `CODEX_LOCAL_ONLY=false` のままにしてください。
+
+共通の注意:
+- `auth.json` の位置は OS 環境変数 `CODEX_HOME` で変更可能（例: `/opt/codex`）。これは `.env` ではなく「OS環境変数」として設定します。
+- 以前の認証方式から切り替える場合は `~/.codex/auth.json` の再作成（`codex login` 実行）を検討してください。
+
+4) Codex の設定（OpenAI gpt-5 を使う例）
 
 ```bash
 mkdir -p ~/.codex
 cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 ```
 
-OpenAI の gpt-5 モデルを使うには、`OPENAI_API_KEY` を環境変数として設定し、
-`.env` などで `CODEX_MODEL=gpt-5` を指定します。
+OpenAI の gpt-5 モデルを使うには、（APIキー運用時は）`OPENAI_API_KEY` を環境変数として設定し、
+`.env` などで `CODEX_MODEL=gpt-5` を指定します。OAuth運用時は `OPENAI_API_KEY` は必須ではありません。
 
-4) 環境変数の設定（.env 対応）
+5) 環境変数の設定（.env 対応）
 
 このリポジトリは `.env` から環境変数を自動で読み込みます（`pydantic-settings`）。
 
@@ -51,13 +81,13 @@ cp .env.example .env
 export CODEX_ENV_FILE=.env.local
 ```
 
-5) サーバ起動
+6) サーバ起動
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-6) SDK から接続
+7) SDK から接続
 
 ```python
 from openai import OpenAI
@@ -65,6 +95,7 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 ```
 
 詳細は `docs/IMPLEMENTATION_PLAN.md` と `docs/AGENTS.md` を参照してください。
+Responses API 互換は最小実装済み（非ストリーム/ストリーム）。詳細と今後の拡張は `docs/RESPONSES_API_PLAN.md` を参照。
 
 ## 環境変数（正確な仕様）
 
@@ -87,13 +118,22 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 - CODEX_TIMEOUT: Codex 実行のサーバー側タイムアウト秒数（既定 120）。
 - CODEX_ENV_FILE: 読み込む `.env` ファイルのパス。これは OS の環境変数としてサーバー起動前に設定してください（`.env` 内には書かない）。未設定時は `.env`。
 
+認証関連の補足（重要）
+- パターンA（OAuth/ChatGPT）とパターンB（APIキー）のいずれも Codex CLI 側で完結します。
+  サーバープロセスと同じ OS ユーザーで `codex login` を実行してください。
+- `auth.json` の場所は `$CODEX_HOME`（既定 `~/.codex`）。このパスを変える場合は、
+  `.env` ではなく OS の環境変数 `CODEX_HOME` を設定してください。
+- `PROXY_API_KEY` はこの API ラッパーの外部アクセス制御用で、Codex の OAuth 認証とは無関係です。
+- ChatGPT ログイン方式では `OPENAI_API_KEY` は不要です。APIキー運用では必要に応じて設定してください。
+- `CODEX_LOCAL_ONLY=1` のときは、OpenAI のようなリモート `base_url` は拒否されます（APIキー運用時は注意）。
+
 補足（Codex 側の重要ポイント）
 - model: Codex の既定は `gpt-5`。`o3` や `o4-mini` なども有効。
 - sandbox_mode: `read-only`（既定）/`workspace-write`/`danger-full-access` をサポート。`workspace-write` では `sandbox_workspace_write.network_access`（既定 false）等の追加設定が可能。
 - model_reasoning_effort: `minimal`/`low`/`medium`/`high` をサポート。
 
 プロバイダ固有の環境変数について
-- OpenAI プロバイダを使う場合、Codex CLI は `OPENAI_API_KEY` を参照します。これは本ラッパーではなく Codex 側が読み取る変数です。
+- OpenAI プロバイダを「APIキー運用」で使う場合、Codex CLI は `OPENAI_API_KEY` を参照します。これは本ラッパーではなく Codex 側が読み取る変数です（OAuth運用では不要）。
 - 独自プロバイダやローカル推論（例: `ollama`）を使う場合は `~/.codex/config.toml` の `model_providers` 設定で `base_url` 等を指定してください。
 
 `.env` の雛形は `.env.example` を参照してください。
