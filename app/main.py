@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from .codex import CodexError, run_codex
 from .config import settings
 from .deps import rate_limiter, verify_api_key
+from .security import assert_local_only_or_raise
 from .prompt import build_prompt
 from .schemas import (
     ChatChoice,
@@ -37,8 +38,17 @@ async def chat_completions(req: ChatCompletionRequest):
     prompt = build_prompt([m.dict() for m in req.messages])
     overrides = req.x_codex.dict(exclude_none=True) if req.x_codex else None
 
-    if settings.local_only and overrides and overrides.get("sandbox") == "danger-full-access":
-        raise HTTPException(status_code=400, detail="danger-full-access is disabled")
+    # Safety gate: only allow danger-full-access when explicitly enabled
+    if overrides and overrides.get("sandbox") == "danger-full-access":
+        if not settings.allow_danger_full_access:
+            raise HTTPException(status_code=400, detail="danger-full-access is disabled by server policy")
+
+    # Enforce local-only model provider when enabled
+    if settings.local_only:
+        try:
+            assert_local_only_or_raise()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     try:
         if req.stream:

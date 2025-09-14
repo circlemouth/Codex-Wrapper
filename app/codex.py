@@ -12,11 +12,21 @@ async def run_codex(prompt: str, overrides: Optional[Dict] = None) -> AsyncItera
     """Run codex CLI as async generator yielding stdout lines."""
     cfg = {
         "sandbox_mode": settings.sandbox_mode,
-        "approval_policy": settings.approval_policy,
         "model_reasoning_effort": settings.reasoning_effort,
     }
+    # Map API overrides (x_codex) to Codex config keys
     if overrides:
-        cfg.update({k: v for k, v in overrides.items() if v is not None})
+        mapped: Dict[str, object] = {}
+        for k, v in overrides.items():
+            if v is None:
+                continue
+            if k == "sandbox":
+                mapped["sandbox_mode"] = v
+            elif k == "reasoning_effort":
+                mapped["model_reasoning_effort"] = v
+            else:
+                mapped[k] = v
+        cfg.update(mapped)
 
     cmd = [settings.codex_path, "exec", prompt, "-q"]
     for key, value in cfg.items():

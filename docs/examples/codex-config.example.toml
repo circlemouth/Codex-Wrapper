@@ -1,0 +1,34 @@
+# Codex CLI config example
+#
+# Place this file at:
+#   ~/.codex/config.toml
+# or set CODEX_HOME to customize the base directory:
+#   export CODEX_HOME=/path/to/.codex
+#   mkdir -p "$CODEX_HOME" && cp docs/examples/codex-config.example.toml "$CODEX_HOME/config.toml"
+
+# --- Model/provider (optional) ---
+# The CLI has a built‑in OpenAI provider. If OPENAI_API_KEY is present,
+# you can use it without extra configuration.
+# model = "gpt-5"     # or "o3", "o4-mini"
+
+# You can also override the OpenAI base URL via env var:
+#   export OPENAI_BASE_URL=https://api.openai.com/v1
+
+# --- Tools ---
+# Enable the OpenAI Responses web_search tool (off by default)
+# tools.web_search = true
+
+# --- MCP servers (stdio transport) ---
+# Example: generic web search MCP via npx (replace with your server)
+# [mcp_servers.search]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-generic-web-search"]
+# env = { API_KEY = "your_api_key" }
+# startup_timeout_ms = 20000
+
+# --- Shell environment policy (optional) ---
+# [shell_environment_policy]
+# inherit = "core"            # all | core | none
+# include_only = ["PATH","HOME"]
+# set = { CI = "1" }
+

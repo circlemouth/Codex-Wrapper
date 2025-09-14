@@ -9,7 +9,6 @@ class ChatMessage(BaseModel):
 
 class XCodexOptions(BaseModel):
     sandbox: Optional[str] = None
-    approval_policy: Optional[str] = None
     reasoning_effort: Optional[str] = None
     network_access: Optional[bool] = None
 

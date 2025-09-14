@@ -11,7 +11,7 @@
 1. HTTP API：`/v1/chat/completions` と `/v1/models`（一覧のみ）。
 2. ストリーミング：少しずつテキストを返す仕組み → サーバー送信イベント（Server-Sent Events/SSE）。
 3. Codex 実行：`codex exec` をサブプロセスとして呼ぶ。静かな出力（`-q`）を優先的に使い、行単位で読み取る。
-4. Codex の思考モード（`model_reasoning_effort`）とエージェント権限（`sandbox_mode`/`approval_policy`）をサーバー起動時の既定値で制御し、リクエスト側では任意で上書きできる。
+4. Codex の思考モード（`model_reasoning_effort`）とエージェント権限（`sandbox_mode`）をサーバー起動時の既定値で制御し、リクエスト側では任意で上書きできる。
 
 完成の判断
 
@@ -32,7 +32,7 @@
 - `messages`：`system` / `user` / `assistant` を受ける。まとめて 1 本の指示に変換する。
 - `stream`：`true` なら SSE で逐次返す。
 - `temperature`, `max_tokens`：受けるが、CLI 実行では無視（将来拡張の余地として保持）。
-- `x_codex`（任意）：`sandbox`/`approval_policy`/`reasoning_effort` などを指定。未指定時はサーバー起動時の既定値を用いる。
+- `x_codex`（任意）：`sandbox`/`reasoning_effort` などを指定。未指定時はサーバー起動時の既定値を用いる。
 
 出力（非ストリーム）
 
@@ -54,7 +54,7 @@
 - FastAPI：HTTP の受け口。SSE にも対応。
 - CodexRunner：`codex exec` を非同期サブプロセスで走らせ、行単位で stdout を流す。失敗時は stderr も吸い上げて整形。
 - PromptBuilder：`messages` を 1 本の指示文にまとめる（`system` を先頭へ）。
-- Config：環境変数で最小制御（例：`CODEX_MODEL`、`CODEX_WORKDIR`、`CODEX_APPROVAL_POLICY`、`CODEX_SANDBOX_MODE`、`PROXY_API_KEY`）。
+- Config：環境変数で最小制御（例：`CODEX_MODEL`、`CODEX_WORKDIR`、`CODEX_SANDBOX_MODE`、`PROXY_API_KEY`）。
 - Logger：アプリ側ログ＋Codex セッション JSONL のパスを記録（必要なら後で読み込み）。
 
 ## 4. Codex 呼び出しの取り決め
@@ -64,7 +64,7 @@
 - 非対話実行：`codex exec "<指示>"`。
 - 静かな出力：`-q` / `--quiet` を付ける。
 - モデル指定：必要なら `--model o4-mini` 等（任意）。
-- サンドボックス/承認：`--config sandbox_mode=...` と `--config approval_policy=...` を環境変数から切替（初期は安全側）。
+- サンドボックス：`--config sandbox_mode=...` を環境変数から切替（初期は安全側）。
 - 思考モード：`--config model_reasoning_effort=...` を環境変数から切替（`medium` が既定）。
 
 作業ディレクトリ
@@ -94,11 +94,10 @@
 
 - `PROXY_API_KEY`：API 認証用。
 - `CODEX_WORKDIR`：Codex 実行カレント。
-- `CODEX_APPROVAL_POLICY`：`never` / `on-request` / `on-failure` / `untrusted`（まずは安全側）。
 - `CODEX_SANDBOX_MODE`：`read-only` / `workspace-write` / `danger-full-access`（既定は安全側）。
 - `CODEX_REASONING_EFFORT`：`minimal` / `low` / `medium` / `high`（既定は `medium`）。
-- `CODEX_LOCAL_ONLY`：`1` でローカル固定（クラウド先ベースURLは拒否）。
-- `CODEX_MODEL`：`o3-mini` 等（任意）。
+- `CODEX_LOCAL_ONLY`：`1` でローカル固定（プロバイダの `base_url` がローカル以外なら 400）。
+- `CODEX_MODEL`：`o3` / `o4-mini` / `gpt-5` 等（任意）。
 - `CODEX_PATH`：`codex` 実行ファイルへのパスを上書きしたい場合に使用。
 - `CODEX_TIMEOUT`：Codex 実行のタイムアウト秒数（既定 120）。
 - `RATE_LIMIT_PER_MINUTE`：1 分あたりの許可リクエスト数（既定 60）。
@@ -174,7 +173,6 @@ CodexRunner のコマンド
   "codex", "exec", prompt,
   "-q",
   "--config", f"sandbox_mode='{os.getenv('CODEX_SANDBOX_MODE','read-only')}'",
-  "--config", f"approval_policy='{os.getenv('CODEX_APPROVAL_POLICY','on-request')}'",
   "--config", f"model_reasoning_effort='{os.getenv('CODEX_REASONING_EFFORT','medium')}'",
   # 任意: ローカル provider 固定（例: ollama）
   # "--config", "model_provider='ollama'",
@@ -182,13 +180,12 @@ CodexRunner のコマンド
   # "--config", f"model='{os.getenv('CODEX_MODEL','llama3.1')}'",
 ]` のように組み立て、空値は落とす。
 - `cwd=CODEX_WORKDIR` を必ず指定。
-- `CODEX_LOCAL_ONLY=1` の場合、上記 provider/base_url がローカル以外であれば実行前に 400 で拒否。
+- `CODEX_LOCAL_ONLY=1` の場合、`$CODEX_HOME/config.toml` の `model_providers` と `OPENAI_BASE_URL` を検査し、ローカル以外の `base_url` なら実行前に 400 で拒否。
 
 API 入力の拡張（任意）
 
 - リクエスト JSON のベンダー拡張 `x_codex` を受け付け、以下を `--config` にマップ：
   - `x_codex.sandbox` → `sandbox_mode`
-  - `x_codex.approval_policy` → `approval_policy`
   - `x_codex.reasoning_effort` → `model_reasoning_effort`
   - `x_codex.network_access`（true/false）→ `sandbox_workspace_write.network_access`（`workspace-write` のときのみ）
 
