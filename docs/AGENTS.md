@@ -101,6 +101,8 @@ curl -N \
 - `CODEX_SANDBOX_MODE`：`read-only` / `workspace-write` / `danger-full-access`
 - `CODEX_REASONING_EFFORT`：`minimal` / `low` / `medium` / `high`
 - `CODEX_LOCAL_ONLY`：`1` でローカル以外のベースURLを拒否
+- `CODEX_TIMEOUT`：Codex 実行のタイムアウト秒数（既定 120）
+- `RATE_LIMIT_PER_MINUTE`：1 分あたりの許可リクエスト数（既定 60）
 
 上記でサーバー起動時の既定値を決め、リクエストでは `x_codex` フィールドで任意に上書き可能（省略時は既定値が適用されます）。
 

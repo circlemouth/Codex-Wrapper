@@ -6,12 +6,12 @@ OpenAI 互換の最小 API で Codex CLI をラップする FastAPI サーバー
 - 実装計画：`docs/IMPLEMENTATION_PLAN.md`
 - エージェント向けガイド：`docs/AGENTS.md`
 
-## クイックスタート（計画に準拠）
+## クイックスタート
 
 1) 依存
 
 ```bash
-pip install fastapi "uvicorn[standard]" pydantic
+pip install -r requirements.txt
 ```
 
 2) Codex の導入（いずれか）
@@ -22,13 +22,23 @@ npm i -g @openai/codex
 brew install codex
 ```
 
-3) サーバ起動（実装後）
+3) 必要な環境変数を設定
+
+```bash
+export CODEX_WORKDIR="$PWD"              # Codex が操作できる作業ディレクトリ
+export PROXY_API_KEY="your_api_key"      # 認証を有効にする場合
+# 任意: export CODEX_MODEL="o3-mini"
+# 任意: export RATE_LIMIT_PER_MINUTE=60
+# 任意: export CODEX_TIMEOUT=120
+```
+
+4) サーバ起動
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-4) SDK から接続
+5) SDK から接続
 
 ```python
 from openai import OpenAI
