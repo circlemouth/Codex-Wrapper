@@ -100,6 +100,8 @@
 - `CODEX_LOCAL_ONLY`：`1` でローカル固定（クラウド先ベースURLは拒否）。
 - `CODEX_MODEL`：`o3-mini` 等（任意）。
 - `CODEX_PATH`：`codex` 実行ファイルへのパスを上書きしたい場合に使用。
+- `CODEX_TIMEOUT`：Codex 実行のタイムアウト秒数（既定 120）。
+- `RATE_LIMIT_PER_MINUTE`：1 分あたりの許可リクエスト数（既定 60）。
 
 これらでサーバー起動時の既定値を定め、リクエスト側は `x_codex` を使うことで任意に上書きできる（OpenAI 互換のまま）。
 
