@@ -126,8 +126,8 @@ Codex CLI のドキュメントに準拠して、`sandbox_mode` を切り替え�
 - 編集許可（推奨）: `sandbox=workspace-write`（ネットワークは `false`）
   - ワークスペース内の編集とコマンド実行は自動可。外部アクセスやリポ外は承認が必要。ネットワークは遮断。
 - フルアクセス（明示許可時のみ）: `sandbox=danger-full-access`
-  - ファイル・ネットワーク全面許可。サーバーは既定で拒否しますが、`CODEX_ALLOW_DANGER_FULL_ACCESS=true` を設定すると API からの要求を許可します。
-  - `CODEX_LOCAL_ONLY=true` の場合は、プロバイダの `base_url` がローカル（localhost/127.0.0.1/[::1]/unix）であることも必須です。
+  - ファイル・ネットワーク全面許可。サーバーは既定で拒否しますが、`CODEX_ALLOW_DANGER_FULL_ACCESS=1` を設定すると API からの要求を許可します。
+  - `CODEX_LOCAL_ONLY=1` の場合は、プロバイダの `base_url` がローカル（localhost/127.0.0.1/[::1]/unix）であることも必須です。
 
 CLI フラグ相当（参考）
 
@@ -200,7 +200,7 @@ OpenAI 互換のまま利用できるよう、任意でベンダー拡張 `x_cod
 }
 ```
 
-サーバーは上記を Codex CLI の `--config` にマッピングします。`CODEX_LOCAL_ONLY=1` の場合はローカル以外のベースURLを拒否し、`danger-full-access` は `CODEX_ALLOW_DANGER_FULL_ACCESS=true` のときのみ許可します。
+サーバーは上記を Codex CLI の `--config` にマッピングします。`CODEX_LOCAL_ONLY=1` の場合はローカル以外のベースURLを拒否し、`danger-full-access` は `CODEX_ALLOW_DANGER_FULL_ACCESS=1` のときのみ許可します。
 
 ## サブモジュール運用
 
