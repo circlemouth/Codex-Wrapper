@@ -22,7 +22,17 @@ npm i -g @openai/codex
 brew install codex
 ```
 
-3) 環境変数の設定（.env 対応）
+3) Codex の設定（OpenAI gpt-5 を使う例）
+
+```bash
+mkdir -p ~/.codex
+cp docs/examples/codex-config.example.toml ~/.codex/config.toml
+```
+
+OpenAI の gpt-5 モデルを使うには、`OPENAI_API_KEY` を環境変数として設定し、
+`.env` などで `CODEX_MODEL=gpt-5` を指定します。
+
+4) 環境変数の設定（.env 対応）
 
 このリポジトリは `.env` から環境変数を自動で読み込みます（`pydantic-settings`）。
 
@@ -41,13 +51,13 @@ cp .env.example .env
 export CODEX_ENV_FILE=.env.local
 ```
 
-4) サーバ起動
+5) サーバ起動
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-5) SDK から接続
+6) SDK から接続
 
 ```python
 from openai import OpenAI
@@ -69,11 +79,11 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 - CODEX_SANDBOX_MODE: サンドボックス。許容値: `read-only` | `workspace-write` | `danger-full-access`。
   - `workspace-write` の場合、ラッパーは `--config sandbox_workspace_write='{ network_access = <true|false> }'` を必要に応じて付与します（API の `x_codex.network_access` が指定されたとき）。
 - CODEX_REASONING_EFFORT: 推論強度。許容値: `minimal` | `low` | `medium` | `high`（既定 `medium`）。
-- CODEX_LOCAL_ONLY: `true`/`false`。デフォルトは `false`（推奨）。
-  - `true` の場合、モデルプロバイダの `base_url` がローカル（`localhost`/`127.0.0.1`/`[::1]`/`unix://`）以外なら 400 を返します。
+- CODEX_LOCAL_ONLY: `0`/`1`。デフォルトは `0`（推奨）。
+  - `1` の場合、モデルプロバイダの `base_url` がローカル（`localhost`/`127.0.0.1`/`[::1]`/`unix://`）以外なら 400 を返します。
   - 検査対象は `$CODEX_HOME/config.toml` の `model_providers` と、組み込み `openai` プロバイダの `OPENAI_BASE_URL` です。設定が見つからない/不明な場合も安全側で拒否します。
-- CODEX_ALLOW_DANGER_FULL_ACCESS: `true`/`false`（既定 `false`）。`true` にすると、APIの `x_codex.sandbox: "danger-full-access"` を許可します。
-  - 安全上の推奨: これを `true` にするのは隔離済みのコンテナ/VM環境に限ってください。
+- CODEX_ALLOW_DANGER_FULL_ACCESS: `0`/`1`（既定 `0`）。`1` にすると、APIの `x_codex.sandbox: "danger-full-access"` を許可します。
+  - 安全上の推奨: これを `1` にするのは隔離済みのコンテナ/VM環境に限ってください。
 - CODEX_TIMEOUT: Codex 実行のサーバー側タイムアウト秒数（既定 120）。
 - CODEX_ENV_FILE: 読み込む `.env` ファイルのパス。これは OS の環境変数としてサーバー起動前に設定してください（`.env` 内には書かない）。未設定時は `.env`。
 
@@ -90,12 +100,12 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 
 ### 危険モードの明示許可と Local Only の関係
 
-1) サーバ側で `CODEX_ALLOW_DANGER_FULL_ACCESS=true` を設定し、起動する。
+1) サーバ側で `CODEX_ALLOW_DANGER_FULL_ACCESS=1` を設定し、起動する。
 2) リクエストで `x_codex.sandbox: "danger-full-access"` を指定する。
 
 危険モードを許可するには以下の両方が必要です。
-- サーバ側で `CODEX_ALLOW_DANGER_FULL_ACCESS=true`
-- （任意）`CODEX_LOCAL_ONLY=true` の場合は、プロバイダの `base_url` がローカルであること
+- サーバ側で `CODEX_ALLOW_DANGER_FULL_ACCESS=1`
+- （任意）`CODEX_LOCAL_ONLY=1` の場合は、プロバイダの `base_url` がローカルであること
 
 どちらかを満たさない場合は 400 を返します。
 
