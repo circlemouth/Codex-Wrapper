@@ -1,12 +1,54 @@
 from typing import List, Dict, Any
 
 
-def build_prompt(messages: List[Dict[str, str]]) -> str:
-    """Convert chat messages into a single prompt string."""
-    system_parts = [m["content"].strip() for m in messages if m["role"] == "system"]
-    convo = [m for m in messages if m["role"] != "system"]
+def _content_to_text(content: Any) -> str:
+    """Best-effort conversion of message `content` into plain text.
 
-    lines = []
+    Supported variants:
+    - str → as-is
+    - list of {type:"text"|"input_text", text} → join text fields
+    - list of str → join
+    - any other → stringified
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # Typed parts (OpenAI-style content parts)
+        parts: List[str] = []
+        for p in content:
+            if isinstance(p, dict):
+                t = p.get("type")
+                if t in ("text", "input_text") and isinstance(p.get("text"), str):
+                    parts.append(p["text"])
+                # Ignore non-text parts for now (images, tool calls, etc.)
+            elif isinstance(p, str):
+                parts.append(p)
+        if parts:
+            return "".join(parts)
+    # Fallback: stringify
+    try:
+        return str(content)
+    except Exception:
+        return ""
+
+
+def build_prompt(messages: List[Dict[str, Any]]) -> str:
+    """Convert chat messages into a single prompt string (robust to content variants)."""
+    system_parts: List[str] = []
+    convo: List[Dict[str, Any]] = []
+
+    for m in messages:
+        role = (m.get("role") or "").strip().lower()
+        # Treat 'developer' as 'system' for compatibility
+        normalized_role = "system" if role == "developer" else role
+        text = _content_to_text(m.get("content"))
+        if normalized_role == "system":
+            if text:
+                system_parts.append(text.strip())
+        else:
+            convo.append({"role": normalized_role or "user", "content": text})
+
+    lines: List[str] = []
     if system_parts:
         lines.append("\n".join(system_parts))
         lines.append("")

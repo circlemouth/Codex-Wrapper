@@ -1,10 +1,13 @@
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal, Union
 from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    # Accept both legacy string content and the newer array-of-parts format
+    # seen in modern OpenAI-compatible clients (e.g., [{type:"text", text:"..."}]).
+    # Keep this permissive to avoid 422 for clients sending mixed shapes.
+    content: Any
 
 
 class XCodexOptions(BaseModel):
