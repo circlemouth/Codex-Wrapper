@@ -1,64 +1,63 @@
-# エージェント向けガイド（Codex-Wrapper）
+# Agents Guide (Codex-Wrapper)
 
-このサーバーは Codex CLI を FastAPI でラップし、OpenAI 互換の最低限 API を提供します。既存の OpenAI クライアント（Python/JS など）で `base_url` を差し替えるだけで利用できます。
+This server wraps the Codex CLI with FastAPI and exposes a minimal OpenAI‑compatible API. You can use existing OpenAI clients (Python/JS, etc.) by switching `base_url`.
 
-#重大な注意事項
-pythonライブラリのインストールは必ずvenv仮想環境で行うこと。
+Important: Always install Python libraries inside a virtual environment (venv).
 
-## 基本
+## Basics
 
-- ベース URL：`http://<host>:8000/v1`
-- 認証：`Authorization: Bearer <PROXY_API_KEY>`（未設定時は無認証で動作可能にする構成も可）
-- 提供モデル：`codex-cli`（見かけ上のモデル名）
-- サブモジュール：`submodules/codex` に Codex 本体（参考実装）
-- 対応API：`/v1/chat/completions`（提供済み）、`/v1/responses`（最小実装済み。詳細は `docs/RESPONSES_API_PLAN.md`）
+- Base URL: `http://<host>:8000/v1`
+- Auth: `Authorization: Bearer <PROXY_API_KEY>` (you may run without it if configured that way)
+- Model ID: `codex-cli` (display name)
+- Submodule: Codex reference lives in `submodules/codex`
+- Supported APIs: `/v1/chat/completions` and minimal `/v1/responses` (see `docs/RESPONSES_API_PLAN.ja.md` – Japanese)
 
-## Codex 認証パターン（OAuth / APIキー）
+## Codex Authentication (OAuth or API key)
 
-- パターンA: OAuth（ChatGPT サインイン）
-  - 実行: サーバープロセスと同じOSユーザーで `codex login`
-  - 成果物: `$CODEX_HOME/auth.json`（既定 `~/.codex/auth.json`）に資格情報を保存
-  - ヘッドレス環境: SSHポートフォワード（`ssh -L 1455:localhost:1455 <user>@<host>`）でブラウザログイン、またはローカルでログインして `auth.json` をサーバーへコピー
-  - `OPENAI_API_KEY`: 不要
+- Pattern A: OAuth (ChatGPT sign‑in)
+  - Run: `codex login` as the same OS user as the server process
+  - Result: credentials saved to `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`)
+  - Headless: SSH port‑forward (`ssh -L 1455:localhost:1455 <user>@<host>`) then open the printed URL locally, or copy `auth.json` from a local login to the server
+  - `OPENAI_API_KEY`: not required
 
-- パターンB: APIキー（従量課金・代替）
-  - 実行: `codex login --api-key "<YOUR_OPENAI_API_KEY>"`
-  - 要件: Responses API に書き込み権限のある OpenAI API キー
-  - 注意: サーバー側で `CODEX_LOCAL_ONLY=1` を有効にしているとリモート `base_url`（OpenAI）は拒否されます。APIキー運用時は通常 `CODEX_LOCAL_ONLY=false` のままにしてください。
+- Pattern B: API key (metered alternative)
+  - Run: `codex login --api-key "<YOUR_OPENAI_API_KEY>"`
+  - Requires: an OpenAI API key with Responses API access
+  - Note: With `CODEX_LOCAL_ONLY=1`, remote provider `base_url`s (e.g., OpenAI) are rejected; typically keep `CODEX_LOCAL_ONLY=0` for API‑key usage.
 
-補足
-- `CODEX_HOME` は OS の環境変数で設定（`.env` ではなく）。このAPIラッパーは Codex CLI が保存した `auth.json` を利用します。
-- `PROXY_API_KEY` はこのラッパーAPIの外部アクセス制御用で、Codex のログイン方式とは無関係です。
+Notes
+- Set `CODEX_HOME` as an OS env var (not in `.env`). This wrapper consumes the `auth.json` stored by Codex CLI.
+- `PROXY_API_KEY` controls access to THIS wrapper API and is independent of Codex login.
 
-## サポート API
+## Supported APIs
 
 - `GET /v1/models`
-  - 返却例：`{"data":[{"id":"codex-cli"}]}`
+  - Example: `{ "data": [{ "id": "codex-cli" }] }`
 - `POST /v1/chat/completions`
-  - 入力（抜粋）
-    - `model`: 任意。省略時 `codex-cli`
-    - `messages`: OpenAI 形式（`system`/`user`/`assistant`）
-    - `stream`: `true` で SSE ストリーミング
-    - `temperature`, `max_tokens`: 受けるが初期版では無視
-  - 出力（非ストリーム）
-    - `choices[0].message.content` に最終テキスト
-    - `usage` は暫定で 0 固定
-  - 出力（ストリーム/SSE）
+  - Input (subset)
+    - `model`: optional; defaults to `codex-cli`
+    - `messages`: OpenAI format (`system`/`user`/`assistant`)
+    - `stream`: `true` for SSE streaming
+    - `temperature`, `max_tokens`: accepted but ignored for the initial version
+  - Output (non‑stream)
+    - `choices[0].message.content` holds the final text
+    - `usage` is 0 for now
+  - Output (stream / SSE)
     - `Content-Type: text/event-stream`
-    - 行ごとに `data: {chunk}`、終了は `data: [DONE]`
-    - JSON 行を優先解釈し、`text` または `content` を `choices[0].delta.content` として送出。非 JSON 行はテキスト連結フォールバック
+    - Lines as `data: {chunk}`, end with `data: [DONE]`
+    - JSON lines are preferred; we emit their `text`/`content` as `choices[0].delta.content`. Non‑JSON lines are concatenated as text fallback.
 
-## サンプル（Python / OpenAI SDK）
+## Examples (Python / OpenAI SDK)
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:8000/v1",
-    api_key="YOUR_PROXY_API_KEY",  # 必須にしている場合
+    api_key="YOUR_PROXY_API_KEY",  # if required
 )
 
-# 非ストリーム
+# Non-stream
 resp = client.chat.completions.create(
     model="codex-cli",
     messages=[
@@ -68,7 +67,7 @@ resp = client.chat.completions.create(
 )
 print(resp.choices[0].message.content)
 
-# ストリーム（SSE）
+# Stream (SSE)
 with client.chat.completions.create(
     model="codex-cli",
     messages=[{"role": "user", "content": "Write 'hello'"}],
@@ -81,9 +80,9 @@ with client.chat.completions.create(
                 print(delta.content, end="", flush=True)
 ```
 
-## サンプル（Responses API）
+## Examples (Responses API)
 
-非ストリーム
+Non‑stream
 ```python
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY")
@@ -91,7 +90,7 @@ resp = client.responses.create(model="codex-cli", input="Say hello")
 print(resp.output[0].content[0].text)
 ```
 
-ストリーム（SSE）
+Stream (SSE)
 ```bash
 curl -N \
   -H "Authorization: Bearer $PROXY_API_KEY" \
@@ -100,15 +99,14 @@ curl -N \
   http://localhost:8000/v1/responses
 ```
 
-SSE イベント（最小）
-- `response.created` → 初期状態（status=in_progress）
-- `response.output_text.delta` → 差分文字列。`{"delta": "..."}`
-- `response.output_text.done` → 最終文字列。`{"text": "..."}`
-- `response.completed` → 最終オブジェクト
-- エラー時は `response.error` → その後 `[DONE]`
-```
+Minimal SSE events
+- `response.created` → initial state (`status=in_progress`)
+- `response.output_text.delta` → incremental text `{ "delta": "..." }`
+- `response.output_text.done` → final text `{ "text": "..." }`
+- `response.completed` → final object
+- On error: `response.error`, then `[DONE]`
 
-## サンプル（curl / SSE）
+## Example (curl / SSE)
 
 ```bash
 curl -N \
@@ -122,102 +120,96 @@ curl -N \
   http://localhost:8000/v1/chat/completions
 ```
 
-## エラー形式
+## Error format
 
-- FastAPI 標準の JSON で返します（`{"detail": {...}}`）。
+- Standard FastAPI JSON: `{ "detail": { ... } }`
 
 ```json
 {"detail": {"message": "...", "type": "server_error", "code": null}}
 ```
 
-- タイムアウトが発生した場合は 500 を返します。
+- Timeouts result in HTTP 500.
 
-## 実行と安全性
+## Execution and safety
 
-- Codex 呼び出し：`codex exec <PROMPT> -q [--model <...>]`
-- CWD：`CODEX_WORKDIR` に制限（サーバープロセスは非 root を推奨）
-- （承認モードは使用しません）
-- レート制限/CORS：API 層で制御（設定により有効化）
+- Codex invocation: `codex exec <PROMPT> -q [--model <...>]`
+- CWD is restricted to `CODEX_WORKDIR` (run the server as a non‑root user)
+- Rate limiting/CORS are handled at the API layer (configurable)
 
-## 設定（環境変数）
+## Settings (Environment Variables)
 
-- `PROXY_API_KEY`：API 認証用（未設定なら無認証でも起動可にする構成も可能）
-- `CODEX_WORKDIR`：Codex 実行時の作業ディレクトリ
-- `CODEX_MODEL`：`o3` / `o4-mini` / `gpt-5` など任意指定
-- `CODEX_PATH`：`codex` 実行ファイルパスの上書き
-- `CODEX_SANDBOX_MODE`：`read-only` / `workspace-write` / `danger-full-access`
-- `CODEX_REASONING_EFFORT`：`minimal` / `low` / `medium` / `high`
-- `CODEX_LOCAL_ONLY`：`0/1`（既定 0 を推奨）。1 のときローカル以外のベースURLを拒否
-- `CODEX_ALLOW_DANGER_FULL_ACCESS`：`1` で API からの `sandbox=danger-full-access` を許可
-- `CODEX_TIMEOUT`：Codex 実行のタイムアウト秒数（既定 120）
-- `RATE_LIMIT_PER_MINUTE`：1 分あたりの許可リクエスト数（既定 60）
- - `CODEX_ENV_FILE`：読み込む `.env` のパス（OS 環境変数として起動前に設定）
+- `PROXY_API_KEY`: auth for this proxy (optional)
+- `CODEX_WORKDIR`: working directory for Codex runs
+- `CODEX_MODEL`: model choice, e.g., `o3` / `o4-mini` / `gpt-5`
+- `CODEX_PATH`: override path to `codex` binary
+- `CODEX_SANDBOX_MODE`: `read-only` / `workspace-write` / `danger-full-access`
+- `CODEX_REASONING_EFFORT`: `minimal` / `low` / `medium` / `high`
+- `CODEX_LOCAL_ONLY`: `0/1` (default 0). If 1, reject non‑local base URLs
+- `CODEX_ALLOW_DANGER_FULL_ACCESS`: allow `sandbox=danger-full-access` when `1`
+- `CODEX_TIMEOUT`: timeout seconds for Codex (default 120)
+- `RATE_LIMIT_PER_MINUTE`: allowed requests per minute (default 60)
+- `CODEX_ENV_FILE`: path to `.env` to load (set as OS env var before start)
 
-上記でサーバー起動時の既定値を決め、リクエストでは `x_codex` フィールドで任意に上書き可能（省略時は既定値が適用されます）。
+Server defaults may be overridden per‑request via the `x_codex` vendor extension; omitted fields fall back to server defaults.
 
-## モード設計（ローカル固定）
+## Modes (Local‑first design)
 
-本ラッパーは「ローカルで固定（クラウドには送信しない）」を前提に設計します。Codex CLI 側のサンドボックス／承認、および思考モード（reasoning effort）を以下の方針でラップします。
+We assume a local‑only posture by default. Codex sandbox/approval and reasoning effort are mapped as follows:
 
-- ローカル固定の意味：モデル推論の HTTP 送信先はローカル（例：`http://localhost:11434/v1` など）に限定。外部クラウドの API ベースURLは禁止。
-- コマンド実行のネットワーク：原則ブロック（`workspace-write` でも network_access=false）。必要な場合のみ明示的に許可（将来オプション）。
+- Local‑only means model provider `base_url` should be local (e.g., `http://localhost:11434/v1`). External cloud base URLs are disallowed when `CODEX_LOCAL_ONLY=1`.
+- Network access for command execution is blocked by default (even in `workspace-write`). Allow only when explicitly configured.
 
-### エージェント権限（フルアクセスか否か）
+### Agent privileges (sandbox)
 
-Codex CLI のドキュメントに準拠して、`sandbox_mode` を切り替えます。
+- Safe (default): `sandbox=read-only`
+  - Read‑only; writes and network are blocked.
+- Edit allowed (recommended): `sandbox=workspace-write` (network `false`)
+  - Enables workspace edits and command execution; network remains blocked.
+- Full access (explicitly allowed only): `sandbox=danger-full-access`
+  - Full file/network access. Disabled by default; set `CODEX_ALLOW_DANGER_FULL_ACCESS=1` to allow.
 
-- 安全（既定）: `sandbox=read-only`
-  - 読み取りのみ。書き込みやネットワークはブロックされます。
-- 編集許可（推奨）: `sandbox=workspace-write`（ネットワークは `false`）
-  - ワークスペース内の編集とコマンド実行は自動可。外部アクセスやリポ外は承認が必要。ネットワークは遮断。
-- フルアクセス（明示許可時のみ）: `sandbox=danger-full-access`
-  - ファイル・ネットワーク全面許可。サーバーは既定で拒否しますが、`CODEX_ALLOW_DANGER_FULL_ACCESS=1` を設定すると API からの要求を許可します。
-  - `CODEX_LOCAL_ONLY=1` の場合は、プロバイダの `base_url` がローカル（localhost/127.0.0.1/[::1]/unix）であることも必須です。
-
-CLI フラグ相当（参考）
+CLI equivalents
 
 ```bash
-# 安全（既定）
+# Safe (default)
 codex exec "..." -q \
   --config sandbox_mode='read-only'
 
-# 編集許可（推奨）
+# Edit allowed
 codex exec "..." -q \
   --config sandbox_mode='workspace-write' \
   --config sandbox_workspace_write='{ network_access = false }'
 
-# 危険モード（明示許可例）
+# Danger mode (explicit)
 codex exec "..." -q \
   --config sandbox_mode='danger-full-access'
 ```
 
-### 思考モード（Reasoning Effort）
+### Reasoning Effort
 
-`model_reasoning_effort` を Codex CLI に渡して制御します（`minimal`/`low`/`medium`/`high`）。
+Control Codex `model_reasoning_effort` (`minimal`/`low`/`medium`/`high`).
 
-- 既定: `medium`（バランス重視）
-- 推奨ガイド:
-  - `high`: 大規模改修、複数ファイルの整合性が絡む作業、要件曖昧で探索が必要なとき
-  - `medium`: 通常の実装・修正
-  - `low/minimal`: 単発の小改修、機械的な変換、コマンド実行中心
+- Default: `medium`
+- Guide:
+  - `high`: big refactors, multi‑file consistency, ambiguous requirements
+  - `medium`: routine implementation and fixes
+  - `low/minimal`: small mechanical edits, command‑centric tasks
 
-CLI フラグ相当（参考）
+CLI example
 
 ```bash
 codex exec "..." -q --config model_reasoning_effort='high'
 ```
 
-### サーバー側の固定と検証（Local Only）
+### Server enforcement (Local‑Only)
 
-サーバー（ラッパー）は以下を強制します。
+- With `CODEX_LOCAL_ONLY=1`, non‑local provider base URLs are rejected (anything other than localhost/127.0.0.1/[::1]/unix).
+  - The server inspects `$CODEX_HOME/config.toml` `model_providers` and the built‑in `openai` `OPENAI_BASE_URL`.
+- Default is `CODEX_LOCAL_ONLY=0` (recommended for OpenAI default provider usage).
+- Keep cloud keys like `OPENAI_API_KEY` unset unless needed; with `CODEX_LOCAL_ONLY=1` they are unused anyway.
+- For local providers (e.g., `ollama`) you can pass configs with `--config`.
 
-- `CODEX_LOCAL_ONLY=1` のとき、Codex のモデル送信先がローカル以外（`http(s)://localhost`/`127.0.0.1`/`[::1]`/Unix ソケット以外）なら 400 を返して拒否。
-  - サーバーは `$CODEX_HOME/config.toml` の `model_providers` と、組み込み `openai` の `OPENAI_BASE_URL` を検査します。設定不明の場合も安全側で拒否します。
-- デフォルトは `CODEX_LOCAL_ONLY=0`（推奨）。OpenAI の既定プロバイダとモデルを使う想定のためです。
-- `OPENAI_API_KEY` など外部クラウド用のキーは未設定を推奨（設定されていても `CODEX_LOCAL_ONLY=1` のときは不使用）。
-- Codex CLI には `--config model_provider=ollama` などローカル向けを明示、`--config model_providers.ollama.base_url='http://localhost:11434/v1'` を付与。
-
-例（ローカル Ollama に固定して実行）
+Example (force local Ollama)
 
 ```bash
 codex exec "..." -q \
@@ -229,60 +221,61 @@ codex exec "..." -q \
   --config model_reasoning_effort='medium'
 ```
 
-### API からの指定（拡張フィールド）
+### Vendor extension from API (`x_codex`)
 
-OpenAI 互換のまま利用できるよう、任意でベンダー拡張 `x_codex` を受け付けます（未指定時はサーバー既定を適用）。
+To remain OpenAI‑compatible, we accept an optional `x_codex` field. Omitted fields fall back to server defaults.
 
 ```json
 {
   "model": "codex-cli",
   "messages": [ { "role": "user", "content": "..." } ],
   "x_codex": {
-    "sandbox": "workspace-write",           // read-only | workspace-write | danger-full-access
-    "reasoning_effort": "high",             // minimal | low | medium | high
-    "network_access": false                  // workspace-write のときのみ有効
+    "sandbox": "workspace-write",           
+    "reasoning_effort": "high",             
+    "network_access": false                  
   }
 }
 ```
 
-サーバーは上記を Codex CLI の `--config` にマッピングします。`CODEX_LOCAL_ONLY=1` の場合はローカル以外のベースURLを拒否し、`danger-full-access` は `CODEX_ALLOW_DANGER_FULL_ACCESS=1` のときのみ許可します。
+The server maps these to Codex CLI `--config`. With `CODEX_LOCAL_ONLY=1`, non‑local base URLs are rejected; `danger-full-access` is allowed only when `CODEX_ALLOW_DANGER_FULL_ACCESS=1`.
 
-## サブモジュール運用
+## Submodule workflow
 
-- 参照先：`submodules/codex`（https://github.com/openai/codex.git）
-- 初回取得：`git submodule update --init --recursive`
-- 更新反映：
+- Location: `submodules/codex` (https://github.com/openai/codex.git)
+- First checkout: `git submodule update --init --recursive`
+- Update to latest:
 
 ```bash
 git submodule update --remote submodules/codex
-# 必要に応じて commit し、上位リポジトリに反映
+# Commit as needed in the parent repo
 ```
 
-## 制約と非対応（初期）
+## Limitations (initial)
 
-- ツール/関数呼び出し・画像/音声は非対応
-- 厳密なトークン制御・マルチスレッドは非対応
-- CLI 出力仕様の変化に備え、JSON/テキスト両対応でパース（将来変更に追随）
+- No tool/function calling; no image/audio
+- No strict token accounting; no multi‑threading
+- CLI output format can evolve; we parse both JSON and text to remain resilient
 
-## トラブルシュート
+## Troubleshooting
 
-- 401：`PROXY_API_KEY` とヘッダを確認
-- 500（タイムアウト含む）：Codex 実行が長すぎる可能性。プロンプトを簡潔に、またはタイムアウト設定を調整
-- 429：レート制限到達。`RATE_LIMIT_PER_MINUTE` を調整
-- 出力に CLI サマリや `MCP client for ... failed to start` が混ざる:
-  - 非ストリームは `codex exec --json --output-last-message` で最終メッセージのみ返すためクリーンです。
-  - ストリームはサーバー側で人間向け見出し（`OpenAI Codex v`、`workdir:`、`model:`、`provider:`、`approval:`、`sandbox:`、`reasoning`、`User instructions:`、`User:`、`Assistant:`、`tokens used:`）や MCP 起動警告行をフィルタします。
-  - 根本対処: `~/.codex/config.toml` の `mcp_servers` を削除/コメントアウト（figma などの未設定サーバーが起動タイムアウトしないように）。
-## Codex の TOML 設定
+- 401: check `PROXY_API_KEY` and request headers
+- 500 (incl. timeout): Codex run took too long; simplify prompt or raise timeout
+- 429: rate limit reached; adjust `RATE_LIMIT_PER_MINUTE`
+- Extra CLI banner or `MCP client for ... failed to start` in output:
+  - Non‑stream uses `codex exec --json --output-last-message` to keep output clean.
+  - Stream filters human banners (`OpenAI Codex v`, `workdir:`, `model:`, `provider:`, `approval:`, `sandbox:`, `reasoning`, `User instructions:`, `User:`, `Assistant:`, `tokens used:`) and MCP startup warnings.
+  - Root fix: remove/comment `mcp_servers` in `~/.codex/config.toml` to avoid timeouts from unconfigured servers.
 
-- 場所: `$CODEX_HOME/config.toml`（未設定時は `~/.codex/config.toml`）
-- 例: `docs/examples/codex-config.example.toml` をコピー
+## Codex TOML config
+
+- Location: `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`)
+- Example: copy `docs/examples/codex-config.example.toml`
 
 ```bash
 mkdir -p ~/.codex
 cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 ```
 
-- OpenAI をAPIキー運用で使う場合は `OPENAI_API_KEY` を設定（OAuth運用では不要）。
-- Web 検索は `tools.web_search = true` を `config.toml` に記述。
-- MCP サーバーは `mcp_servers.<id>` で定義（stdio）。
+- For OpenAI in API‑key mode set `OPENAI_API_KEY` (OAuth mode does not need it).
+- Enable web search via `tools.web_search = true` in `config.toml`.
+- Define MCP servers under `mcp_servers.<id>` (stdio).
