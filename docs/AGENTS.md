@@ -102,6 +102,8 @@ curl -N \
 - `CODEX_REASONING_EFFORT`：`minimal` / `low` / `medium` / `high`
 - `CODEX_LOCAL_ONLY`：`1` でローカル以外のベースURLを拒否
 
+上記でサーバー起動時の既定値を決め、リクエストでは `x_codex` フィールドで任意に上書き可能（省略時は既定値が適用されます）。
+
 ## モード設計（ローカル固定）
 
 本ラッパーは「ローカルで固定（クラウドには送信しない）」を前提に設計します。Codex CLI 側のサンドボックス／承認、および思考モード（reasoning effort）を以下の方針でラップします。

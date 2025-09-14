@@ -11,6 +11,7 @@
 1. HTTP API：`/v1/chat/completions` と `/v1/models`（一覧のみ）。
 2. ストリーミング：少しずつテキストを返す仕組み → サーバー送信イベント（Server-Sent Events/SSE）。
 3. Codex 実行：`codex exec` をサブプロセスとして呼ぶ。静かな出力（`-q`）を優先的に使い、行単位で読み取る。
+4. Codex の思考モード（`model_reasoning_effort`）とエージェント権限（`sandbox_mode`/`approval_policy`）をサーバー起動時の既定値で制御し、リクエスト側では任意で上書きできる。
 
 完成の判断
 
@@ -31,6 +32,7 @@
 - `messages`：`system` / `user` / `assistant` を受ける。まとめて 1 本の指示に変換する。
 - `stream`：`true` なら SSE で逐次返す。
 - `temperature`, `max_tokens`：受けるが、CLI 実行では無視（将来拡張の余地として保持）。
+- `x_codex`（任意）：`sandbox`/`approval_policy`/`reasoning_effort` などを指定。未指定時はサーバー起動時の既定値を用いる。
 
 出力（非ストリーム）
 
@@ -63,6 +65,7 @@
 - 静かな出力：`-q` / `--quiet` を付ける。
 - モデル指定：必要なら `--model o4-mini` 等（任意）。
 - サンドボックス/承認：`--config sandbox_mode=...` と `--config approval_policy=...` を環境変数から切替（初期は安全側）。
+- 思考モード：`--config model_reasoning_effort=...` を環境変数から切替（`medium` が既定）。
 
 作業ディレクトリ
 
@@ -97,6 +100,8 @@
 - `CODEX_LOCAL_ONLY`：`1` でローカル固定（クラウド先ベースURLは拒否）。
 - `CODEX_MODEL`：`o3-mini` 等（任意）。
 - `CODEX_PATH`：`codex` 実行ファイルへのパスを上書きしたい場合に使用。
+
+これらでサーバー起動時の既定値を定め、リクエスト側は `x_codex` を使うことで任意に上書きできる（OpenAI 互換のまま）。
 
 ## 8. 実装タスク（Codex に投げる用の粒度）
 
