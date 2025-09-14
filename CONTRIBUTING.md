@@ -5,7 +5,7 @@ Thanks for contributing to Codex-Wrapper! This repository maintains bilingual us
 ## Doc Language Policy
 
 - User docs are maintained in two languages with mirrored content, except noted below:
-  - English files end with `.en.md`
+  - English files end with `.en.md` (except the root `README.md`)
   - Japanese files end with `.ja.md`
 - The agents guide is English‑only: `docs/AGENTS.md`.
 - Environment configuration docs are English‑only: `docs/ENV.md`.
@@ -14,7 +14,7 @@ Thanks for contributing to Codex-Wrapper! This repository maintains bilingual us
 ## Content Parity Rules
 
 - Update both English and Japanese documents in the same PR whenever the content changes (except the two Japanese‑only docs listed above).
-- Cross‑link the pair (e.g., add links between `README.en.md` and `README.ja.md`).
+- Cross‑link the pair (e.g., add links between `README.md` and `README.ja.md`, or between `*.en.md` and `*.ja.md`).
 - If you add a new doc, create both `*.en.md` and `*.ja.md` siblings under `docs/` (unless you are extending one of the Japanese‑only docs).
 - Keep titles, section order, and examples aligned across languages. If an example is locale‑specific, note it explicitly in both versions.
 - Small wording fixes in one language still require parity (make an equivalent adjustment in the other language or open a follow‑up issue tagged `docs:parity`).
@@ -30,7 +30,7 @@ Thanks for contributing to Codex-Wrapper! This repository maintains bilingual us
 
 - [ ] Updated English doc(s)
 - [ ] Updated Japanese doc(s)
-- [ ] Cross‑links between `*.en.md` and `*.ja.md`
+- [ ] Cross‑links between language versions (`README.md`/`README.ja.md` or `*.en.md`/`*.ja.md`)
 - [ ] Agents guide unaffected or updated (`docs/AGENTS.md` is English‑only)
 - [ ] ENV doc referenced where appropriate (`docs/ENV.md`)
 - [ ] Local build/run sanity checked if instructions changed
