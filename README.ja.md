@@ -10,7 +10,7 @@ OpenAI 互換の最小 API で Codex CLI をラップする FastAPI サーバー
 
 > 言語ポリシー：ユーザー向けドキュメントは原則として英日両対応ですが、実装計画と Responses API 計画は日本語のみで管理します。運用ルールは `CONTRIBUTING.md` を参照してください。
 
-[English](./README.en.md) | 日本語
+[English](./README.md) | 日本語
 
 ## クイックスタート
 
