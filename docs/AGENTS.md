@@ -36,7 +36,7 @@ Notes
 - `POST /v1/chat/completions`
   - Input (subset)
     - `model`: optional; defaults to `codex-cli`
-    - `messages`: OpenAI format (`system`/`user`/`assistant`)
+  - `messages`: OpenAI format (`system`/`user`/`assistant`). User messages may include `input_image` parts.
     - `stream`: `true` for SSE streaming
     - `temperature`, `max_tokens`: accepted but ignored for the initial version
   - Output (non‑stream)
@@ -63,6 +63,21 @@ resp = client.chat.completions.create(
     messages=[
         {"role": "system", "content": "You are a helpful coding agent."},
         {"role": "user", "content": "Say hello and exit."},
+    ],
+)
+print(resp.choices[0].message.content)
+
+# Image input
+resp = client.chat.completions.create(
+    model="codex-cli",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "Describe this image"},
+                {"type": "input_image", "image_url": {"url": "https://example.com/cat.png"}},
+            ],
+        }
     ],
 )
 print(resp.choices[0].message.content)
@@ -252,7 +267,7 @@ git submodule update --remote submodules/codex
 
 ## Limitations (initial)
 
-- No tool/function calling; no image/audio
+ - No tool/function calling; no audio
 - No strict token accounting; no multi‑threading
 - CLI output format can evolve; we parse both JSON and text to remain resilient
 
