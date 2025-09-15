@@ -101,44 +101,41 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 詳細は `docs/IMPLEMENTATION_PLAN.ja.md` と `docs/AGENTS.md`（英語）を参照してください。
 Responses API 互換は最小実装済み（非ストリーム/ストリーム）。詳細と今後の拡張は `docs/RESPONSES_API_PLAN.ja.md` を参照。
 
-## 環境変数（Authoritative / English）
+## 環境変数
 
-以下のセクションは英語で記載します（英語版 README と同一内容）。
 
-This server reads `.env` and uses the following variables. Example values and constraints follow the current Codex submodule docs (`submodules/codex`).
+このサーバーは `.env` を読み込み、以下の環境変数を使用します。例や制約は Codex サブモジュール（`submodules/codex`）の最新ドキュメントに準拠しています。
 
-- PROXY_API_KEY: API token for this wrapper. If unset, the server can run without auth.
-- RATE_LIMIT_PER_MINUTE: Allowed requests per minute. 0 disables limiting.
-- CODEX_PATH: Path to the `codex` binary. Default `codex`.
-- CODEX_WORKDIR: Working directory for Codex executions (`cwd`). Default `/workspace`.
-- CODEX_MODEL: String passed as Codex `model`, e.g., `o3`, `o4-mini`, `gpt-5` (see `submodules/codex/docs/config.md`, “model”).
-  - Note: The string is free‑form, but it must be a model name supported by the selected `model_provider` (OpenAI by default).
-- CODEX_SANDBOX_MODE: Sandbox mode. One of: `read-only` | `workspace-write` | `danger-full-access`.
-  - For `workspace-write`, the wrapper adds `--config sandbox_workspace_write='{ network_access = <true|false> }'` when the API request specifies `x_codex.network_access`.
-- CODEX_REASONING_EFFORT: Reasoning effort. One of: `minimal` | `low` | `medium` | `high` (default `medium`).
-- CODEX_LOCAL_ONLY: `0`/`1`. Default `0` (recommended).
-  - If `1`, any non‑local model provider `base_url` (not localhost/127.0.0.1/[::1]/unix) is rejected with 400.
-  - The server checks `$CODEX_HOME/config.toml` `model_providers` and the built‑in `openai` provider’s `OPENAI_BASE_URL`. Unknown/missing settings are rejected conservatively.
-- CODEX_ALLOW_DANGER_FULL_ACCESS: `0`/`1` (default `0`). When `1`, the API may request `x_codex.sandbox: "danger-full-access"`.
-  - Safety note: Only set `1` inside isolated containers/VMs.
-- CODEX_TIMEOUT: Server‑side timeout (seconds) for Codex runs (default 120).
-- CODEX_ENV_FILE: Path to the `.env` file to load. Must be set as an OS env var before the server starts (do not place this inside `.env`). Defaults to `.env`.
+- PROXY_API_KEY: ラッパー用の API トークン。未設定の場合は認証なしで起動します。
+- RATE_LIMIT_PER_MINUTE: 1 分あたりのリクエスト許容量。0 を指定するとレート制限を無効化します。
+- CODEX_PATH: `codex` バイナリのパス。既定値は `codex`。
+- CODEX_WORKDIR: Codex 実行時の作業ディレクトリ (`cwd`)。既定値は `/workspace`。
+- CODEX_MODEL: Codex の `model` に渡す文字列（例: `o3`, `o4-mini`, `gpt-5`）。利用する `model_provider` がサポートするモデル名である必要があります。
+- CODEX_SANDBOX_MODE: サンドボックスモード。`read-only` / `workspace-write` / `danger-full-access` のいずれか。
+  - `workspace-write` の場合、API リクエストで `x_codex.network_access` が指定されると `--config sandbox_workspace_write='{ network_access = <true|false> }'` を付与します。
+- CODEX_REASONING_EFFORT: 推論強度。`minimal` / `low` / `medium` / `high`（既定は `medium`）。
+- CODEX_LOCAL_ONLY: `0` または `1`。既定は `0`（推奨）。
+  - `1` にするとローカル以外の `base_url`（localhost/127.0.0.1/[::1]/UNIX ソケット以外）のモデルプロバイダを 400 で拒否します。
+  - サーバーは `$CODEX_HOME/config.toml` の `model_providers` と組み込み `openai` プロバイダの `OPENAI_BASE_URL` を検証し、不明な設定は安全側で拒否します。
+- CODEX_ALLOW_DANGER_FULL_ACCESS: `0` または `1`（既定 `0`）。`1` にすると API から `x_codex.sandbox: "danger-full-access"` を要求できます。隔離環境以外では有効化しないでください。
+- CODEX_TIMEOUT: Codex 実行のサーバー側タイムアウト秒数（既定 120 秒）。
+- CODEX_ENV_FILE: 読み込む `.env` ファイルのパス。サーバー起動前に OS 環境変数として設定する必要があり、`.env` 内からは指定できません（既定 `.env`）。
 
-Auth notes
-- Both OAuth (ChatGPT) and API‑key modes are handled by Codex CLI. Run `codex login` as the same OS user as the server process.
-- `auth.json` location is `$CODEX_HOME` (default `~/.codex`). If you move it, set `CODEX_HOME` as an OS env var (not in `.env`).
-- `PROXY_API_KEY` controls access to this wrapper; it is unrelated to Codex OAuth.
-- ChatGPT login does not require `OPENAI_API_KEY`; API‑key usage does.
-- With `CODEX_LOCAL_ONLY=1`, remote `base_url`s (like OpenAI) are rejected; be mindful when using API‑key mode.
+認証関連の補足
+- OAuth（ChatGPT）と API キーの両モードとも Codex CLI 側で処理します。サーバープロセスと同じ OS ユーザーで `codex login` を実行してください。
+- `auth.json` の場所は `$CODEX_HOME`（既定 `~/.codex`）。移動する場合は `.env` ではなく OS 環境変数で `CODEX_HOME` を設定します。
+- `PROXY_API_KEY` はこのラッパーへのアクセス制御用であり、Codex の OAuth とは無関係です。
+- ChatGPT ログイン（OAuth）では `OPENAI_API_KEY` は不要ですが、API キー運用では必須です。
+- `CODEX_LOCAL_ONLY=1` の場合、OpenAI などリモートの `base_url` は拒否されるため API キー運用時は設定に注意してください。
 
-Codex highlights
-- model: Default is `gpt-5`. Others like `o3` and `o4-mini` work.
-- sandbox_mode: Supports `read-only` (default) / `workspace-write` / `danger-full-access`. For `workspace-write`, `sandbox_workspace_write.network_access` (default false) can be tuned.
-- model_reasoning_effort: `minimal`/`low`/`medium`/`high`.
+Codex の主な設定
+- model: 既定は `gpt-5`。`o3` や `o4-mini` など他のモデルも利用可能です。
+- sandbox_mode: `read-only`（既定）/`workspace-write`/`danger-full-access` をサポート。`workspace-write` の場合は `sandbox_workspace_write.network_access`（既定 false）を調整できます。
+- model_reasoning_effort: `minimal`/`low`/`medium`/`high`。
 
-Provider‑specific env vars
-- With the OpenAI provider in API‑key mode, Codex CLI reads `OPENAI_API_KEY`. This belongs to Codex, not this wrapper (OAuth mode does not require it).
-- For custom providers or local inference (e.g., `ollama`), edit `~/.codex/config.toml` `model_providers` to set `base_url`, etc.
+プロバイダ固有の環境変数
+- OpenAI プロバイダを API キーで使う場合、Codex CLI は `OPENAI_API_KEY` を参照します（ラッパー側ではなく Codex 側の設定）。OAuth モードでは不要です。
+- 独自プロバイダやローカル推論（例: `ollama`）を使うときは、`~/.codex/config.toml` の `model_providers` で `base_url` などを設定してください。
 
 `.env` の雛形は `.env.example` を参照してください。
 
@@ -167,6 +164,20 @@ cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 - Web 検索を有効化するには `tools.web_search = true` を `config.toml` に記載します（デフォルトは無効）。
 - MCP サーバーは `mcp_servers` セクションで定義します（stdio トランスポート）。サンプルは上記例ファイルを参照。
 
+### 複数の Codex 設定を並行運用する
+
+Codex の設定ごとにラッパーを別プロセスで起動し、起動前に `CODEX_HOME` を設定すると、それぞれ異なる `config.toml` を参照できます（`.env` ではなく OS 環境変数として設定してください）。ポートや `.env` の内容を分けたい場合は `CODEX_ENV_FILE` も併用します。
+
+```bash
+# インスタンスA（本番）
+CODEX_HOME=/opt/codex-prod CODEX_ENV_FILE=.env.prod uvicorn app.main:app --port 8000
+
+# インスタンスB（ステージング）
+CODEX_HOME=/opt/codex-stage CODEX_ENV_FILE=.env.stage uvicorn app.main:app --port 8001
+```
+
+`CODEX_HOME` で指定した各ディレクトリ（例: `/opt/codex-prod`）に専用の `config.toml` や必要なら `auth.json` を配置すれば、複数の Codex バックエンドを並行して提供できます。
+
 ## 注意事項
 
 - 本ラッパーを他人に使わせたり、自分の ChatGPT/Codex アカウント経由で第三者の利用を中継すると、OpenAI の規約に抵触する可能性があります。
@@ -188,4 +199,3 @@ cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 - このリポジトリはバイブコーディングによって短時間で作成した実験的なプロジェクトです。
 - おおまかな仕組み以外は作者自身も完全には把握していません。
 - 本番利用・第三者提供の前に、コードと設定、依存関係、セキュリティ方針を必ず各自で精査してください。
-

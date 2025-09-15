@@ -108,7 +108,7 @@ async def run_codex(prompt: str, overrides: Optional[Dict] = None, images: Optio
         raise CodexError(f"Unable to start codex process: {e}")
 
     try:
-        # Stateful filtering: suppress blocks after "User instructions:" until the next role line
+        # Stateful filtering: suppress the CLI prompt echo that follows "User instructions:" lines
         suppress_instructions_block = False
         while True:
             line = await proc.stdout.readline()
@@ -116,41 +116,18 @@ async def run_codex(prompt: str, overrides: Optional[Dict] = None, images: Optio
                 break
             raw = line.decode().rstrip()
 
-            # Detect the beginning of a system prompt dump printed by the CLI
-            # Example:
-            #   User instructions:
-            #   You are ...
-            #   ...
-            #   User: <message>
-            if not suppress_instructions_block:
-                # Trim to check prefix without altering original raw used below
-                chk = _TIMESTAMP_PREFIX.sub("", raw).strip()
-                if chk.startswith("User instructions:"):
-                    suppress_instructions_block = True
-                    # Drop the header line itself
+            # Drop the echoed prompt lines the CLI prints under "User instructions:".
+            if suppress_instructions_block:
+                # A new timestamped line indicates the CLI has moved on to real events.
+                if _TIMESTAMP_PREFIX.match(raw):
+                    suppress_instructions_block = False
+                else:
                     continue
 
-            # While inside the instructions block, drop all lines until reaching a role line or a separator
-            if suppress_instructions_block:
-                stripped = raw.strip()
-                # End of instructions block conditions
-                if stripped.startswith("User:"):
-                    suppress_instructions_block = False
-                    # Drop the user echo line entirely
-                    continue
-                if stripped.startswith("Assistant:"):
-                    suppress_instructions_block = False
-                    # If assistant content is on the same line, emit it (prefix removed)
-                    after = stripped[len("Assistant:"):].lstrip()
-                    if after:
-                        cleaned = filter_codex_stdout_line(after)
-                        if cleaned:
-                            yield cleaned
-                    continue
-                if stripped.startswith("--------") or stripped == "":
-                    suppress_instructions_block = False
-                    continue
-                # Inside instructions: drop
+            # Detect the start of the instructions block (prompt echo) and skip it entirely.
+            chk = _TIMESTAMP_PREFIX.sub("", raw).strip()
+            if chk.startswith("User instructions:"):
+                suppress_instructions_block = True
                 continue
 
             cleaned = filter_codex_stdout_line(raw)

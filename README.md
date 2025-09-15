@@ -162,6 +162,20 @@ cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 - To enable web search, set `tools.web_search = true` in `config.toml` (disabled by default).
 - Configure MCP servers under `mcp_servers` (stdio transport). See the example file.
 
+### Multiple Codex Configs
+
+You can run several wrapper instances, each backed by a different Codex configuration. Launch one process per backend, set a unique `CODEX_HOME` (this must be an OS env var, not inside `.env`), and keep ports/env files separate with `CODEX_ENV_FILE` when you need different `.env` content.
+
+```bash
+# Instance A (production)
+CODEX_HOME=/opt/codex-prod CODEX_ENV_FILE=.env.prod uvicorn app.main:app --port 8000
+
+# Instance B (staging)
+CODEX_HOME=/opt/codex-stage CODEX_ENV_FILE=.env.stage uvicorn app.main:app --port 8001
+```
+
+Each directory specified by `CODEX_HOME` (e.g., `/opt/codex-prod`) should contain its own `config.toml` and optional `auth.json`, letting you serve multiple Codex backends side by side.
+
 ## Notes and Policy
 
 - Do not share your personal ChatGPT/Codex account or resell access. This may violate OpenAI’s terms.
