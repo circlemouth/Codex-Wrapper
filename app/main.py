@@ -1,7 +1,8 @@
 import json
+import os
 import time
 import uuid
-from typing import AsyncIterator
+from typing import AsyncIterator, List
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,8 @@ from .codex import CodexError, run_codex, run_codex_last_message
 from .config import settings
 from .deps import rate_limiter, verify_api_key
 from .security import assert_local_only_or_raise
-from .prompt import build_prompt, normalize_responses_input
+from .prompt import build_prompt_and_images, normalize_responses_input
+from .images import save_image_to_temp
 from .schemas import (
     ChatChoice,
     ChatCompletionRequest,
@@ -41,7 +43,7 @@ async def list_models():
 
 @app.post("/v1/chat/completions", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
 async def chat_completions(req: ChatCompletionRequest):
-    prompt = build_prompt([m.dict() for m in req.messages])
+    prompt, image_urls = build_prompt_and_images([m.dict() for m in req.messages])
     overrides = req.x_codex.dict(exclude_none=True) if req.x_codex else None
 
     # Safety gate: only allow danger-full-access when explicitly enabled
@@ -56,10 +58,22 @@ async def chat_completions(req: ChatCompletionRequest):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    image_paths: List[str] = []
+    try:
+        for u in image_urls:
+            image_paths.append(save_image_to_temp(u))
+    except ValueError as e:
+        for p in image_paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+        raise HTTPException(status_code=400, detail=str(e))
+
     try:
         if req.stream:
             async def event_gen() -> AsyncIterator[bytes]:
-                async for text in run_codex(prompt, overrides):
+                async for text in run_codex(prompt, overrides, image_paths):
                     if text:
                         chunk = {
                             "choices": [
@@ -71,7 +85,7 @@ async def chat_completions(req: ChatCompletionRequest):
 
             return StreamingResponse(event_gen(), media_type="text/event-stream")
         else:
-            final = await run_codex_last_message(prompt, overrides)
+            final = await run_codex_last_message(prompt, overrides, image_paths)
             resp = ChatCompletionResponse(
                 choices=[ChatChoice(message=ChatMessageResponse(content=final))]
             )
@@ -81,6 +95,12 @@ async def chat_completions(req: ChatCompletionRequest):
             status_code=500,
             detail={"message": str(e), "type": "server_error", "code": None},
         )
+    finally:
+        for p in image_paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 
 @app.post("/v1/responses", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
@@ -103,18 +123,29 @@ async def responses_endpoint(req: ResponsesRequest):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    prompt = build_prompt(messages)
+    prompt, image_urls = build_prompt_and_images(messages)
 
     resp_id = f"resp_{uuid.uuid4().hex}"
     msg_id = f"msg_{uuid.uuid4().hex}"
     created = int(time.time())
     model = req.model or "codex-cli"
 
+    image_paths: List[str] = []
+    try:
+        for u in image_urls:
+            image_paths.append(save_image_to_temp(u))
+    except ValueError as e:
+        for p in image_paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+        raise HTTPException(status_code=400, detail=str(e))
+
     try:
         if req.stream:
             async def event_gen() -> AsyncIterator[bytes]:
                 try:
-                    # response.created
                     created_evt = {
                         "id": resp_id,
                         "object": "response",
@@ -125,18 +156,16 @@ async def responses_endpoint(req: ResponsesRequest):
                     yield f"event: response.created\ndata: {json.dumps(created_evt)}\n\n".encode()
 
                     buf: list[str] = []
-                    async for text in run_codex(prompt, overrides):
+                    async for text in run_codex(prompt, overrides, image_paths):
                         if text:
                             buf.append(text)
                             delta_evt = {"id": resp_id, "delta": text}
                             yield f"event: response.output_text.delta\ndata: {json.dumps(delta_evt)}\n\n".encode()
 
                     final_text = "".join(buf)
-                    # output_text.done
                     done_evt = {"id": resp_id, "text": final_text}
                     yield f"event: response.output_text.done\ndata: {json.dumps(done_evt)}\n\n".encode()
 
-                    # response.completed
                     final_obj = ResponsesObject(
                         id=resp_id,
                         created=created,
@@ -163,7 +192,7 @@ async def responses_endpoint(req: ResponsesRequest):
             }
             return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)
         else:
-            final = await run_codex_last_message(prompt, overrides)
+            final = await run_codex_last_message(prompt, overrides, image_paths)
             resp = ResponsesObject(
                 id=resp_id,
                 created=created,
@@ -182,3 +211,9 @@ async def responses_endpoint(req: ResponsesRequest):
             status_code=500,
             detail={"message": str(e), "type": "server_error", "code": None},
         )
+    finally:
+        for p in image_paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass

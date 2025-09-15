@@ -2,7 +2,7 @@ import asyncio
 import os
 import shutil
 import tempfile
-from typing import AsyncIterator, Dict, Optional
+from typing import AsyncIterator, Dict, Optional, List
 import re
 
 from .config import settings
@@ -12,8 +12,8 @@ class CodexError(Exception):
     """Custom error for Codex failures."""
 
 
-def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None) -> list[str]:
-    """Build base `codex exec` command with configs applied and preflight checks."""
+def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None, images: Optional[List[str]] = None) -> list[str]:
+    """Build base `codex exec` command with configs and optional images."""
     cfg = {
         "sandbox_mode": settings.sandbox_mode,
         "model_reasoning_effort": settings.reasoning_effort,
@@ -57,6 +57,9 @@ def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None) -> list[st
 
     # Note: Rust CLI does not support `-q`. Use human output or JSON mode selectively.
     cmd = [exe, "exec", prompt, "--color", "never"]
+    if images:
+        for img in images:
+            cmd += ["--image", img]
     for key, value in cfg.items():
         if key == "network_access":
             # handled separately when sandbox_mode is workspace-write
@@ -80,12 +83,12 @@ def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None) -> list[st
     return cmd
 
 
-async def run_codex(prompt: str, overrides: Optional[Dict] = None) -> AsyncIterator[str]:
+async def run_codex(prompt: str, overrides: Optional[Dict] = None, images: Optional[List[str]] = None) -> AsyncIterator[str]:
     """Run codex CLI as async generator yielding filtered stdout lines suitable for SSE.
 
     Filters human-oriented headers and MCP warnings so only assistant text remains.
     """
-    cmd = _build_cmd_and_env(prompt, overrides)
+    cmd = _build_cmd_and_env(prompt, overrides, images)
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -224,12 +227,12 @@ def filter_codex_stdout_line(line: str) -> Optional[str]:
     return s or None
 
 
-async def run_codex_last_message(prompt: str, overrides: Optional[Dict] = None) -> str:
+async def run_codex_last_message(prompt: str, overrides: Optional[Dict] = None, images: Optional[List[str]] = None) -> str:
     """Run codex and return only the final assistant message using --json and --output-last-message.
 
     This avoids human oriented headers and logs from the CLI.
     """
-    cmd = _build_cmd_and_env(prompt, overrides)
+    cmd = _build_cmd_and_env(prompt, overrides, images)
     # Create temp file in workdir to ensure permissions
     os.makedirs(settings.codex_workdir, exist_ok=True)
     with tempfile.NamedTemporaryFile(prefix="codex-last-", suffix=".txt", dir=settings.codex_workdir, delete=False) as tf:

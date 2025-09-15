@@ -22,22 +22,22 @@
 - エラー時: `response.error` を送出し、その後 `[DONE]` を送る。
 
 フェーズC（互換拡張）
-- 入力 `input` のバリアント追加（chat-like 構造、`input_text` 配列など）。
+- 入力 `input` のバリアント追加（chat-like 構造、`input_text` 配列、`input_image` パーツなど）。
 - `reasoning.effort` → Codex の `model_reasoning_effort` にマップ。
 - `temperature` / `max_output_tokens` は受けるが無視（現行どおり）。
-- 未対応明示（将来検討）: ツール呼び出し、画像/音声、structured output（JSON schema など）、並列スレッド。
+- 未対応明示（将来検討）: ツール呼び出し、音声、structured output（JSON schema など）、並列スレッド。
 
 ## リクエスト変換（最小）
 
 受け入れ（順に判定）
 - Case 1: `input` が string → `messages=[{"role":"user","content": input}]`
-- Case 2: `input` が配列で、各要素が `{type:"input_text", text: string}` → text を結合して 1 ユーザーメッセージへ
+ - Case 2: `input` が配列で、各要素が `{type:"input_text"|"input_image", ...}` → 1 ユーザーメッセージとして扱う（`input_text` は結合、`input_image` は画像として転送）
 - Case 3: `input` が配列で、各要素が `{role, content}` を持つ（chat-like）→ そのまま `messages` として利用
 
 オプション・マッピング
 - `reasoning.effort`（`minimal|low|medium|high`）→ `x_codex.reasoning_effort`
 - `stream: true/false` → SSE 出力の有無
-- 以下は一旦未対応（受け取って無視／400 にしない）：`instructions`、`modalities`、`audio`、`image`、`tools`、`metadata`、`text.format`（Structured Output）
+  - 以下は一旦未対応（受け取って無視／400 にしない）：`instructions`、`modalities`、`audio`、`tools`、`metadata`、`text.format`（Structured Output）
 
 ## レスポンス構造（非ストリーム）
 
