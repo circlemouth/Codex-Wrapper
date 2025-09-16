@@ -110,6 +110,7 @@ Responses API 互換は最小実装済み（非ストリーム/ストリーム�
 - RATE_LIMIT_PER_MINUTE: 1 分あたりのリクエスト許容量。0 を指定するとレート制限を無効化します。
 - CODEX_PATH: `codex` バイナリのパス。既定値は `codex`。
 - CODEX_WORKDIR: Codex 実行時の作業ディレクトリ (`cwd`)。既定値は `/workspace`。
+  - サーバープロセスから書き込み可能なパスを指定してください。読み取り専用パスの場合は `Failed to create CODEX_WORKDIR ... Read-only file system` エラーになります。
 - CODEX_MODEL: Codex の `model` に渡す文字列（例: `o3`, `o4-mini`, `gpt-5`）。利用する `model_provider` がサポートするモデル名である必要があります。
 - CODEX_SANDBOX_MODE: サンドボックスモード。`read-only` / `workspace-write` / `danger-full-access` のいずれか。
   - `workspace-write` の場合、API リクエストで `x_codex.network_access` が指定されると `--config sandbox_workspace_write='{ network_access = <true|false> }'` を付与します。

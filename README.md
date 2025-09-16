@@ -106,6 +106,7 @@ This server reads `.env` and uses the following variables. Example values and co
 - RATE_LIMIT_PER_MINUTE: Allowed requests per minute. 0 disables limiting.
 - CODEX_PATH: Path to the `codex` binary. Default `codex`.
 - CODEX_WORKDIR: Working directory for Codex executions (`cwd`). Default `/workspace`.
+  - Ensure this directory is writable by the server user; otherwise Codex fails with `Failed to create CODEX_WORKDIR ... Read-only file system`.
 - CODEX_MODEL: String passed as Codex `model`, e.g., `o3`, `o4-mini`, `gpt-5` (see `submodules/codex/docs/config.md`, “model”).
   - Note: The string is free‑form, but it must be a model name supported by the selected `model_provider` (OpenAI by default).
 - CODEX_SANDBOX_MODE: Sandbox mode. One of: `read-only` | `workspace-write` | `danger-full-access`.

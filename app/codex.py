@@ -114,7 +114,7 @@ async def run_codex(prompt: str, overrides: Optional[Dict] = None, images: Optio
             line = await proc.stdout.readline()
             if not line:
                 break
-            raw = line.decode().rstrip()
+            raw = line.decode()
 
             # Drop the echoed prompt lines the CLI prints under "User instructions:".
             if suppress_instructions_block:
@@ -164,44 +164,64 @@ _DROP_PREFIXES = (
 )
 
 def filter_codex_stdout_line(line: str) -> Optional[str]:
-    """Filter human-oriented Codex CLI lines, returning cleaned text or None to drop.
+    """Filter human-oriented Codex CLI lines, returning cleaned text (with original newlines).
 
-    - Strips leading ISO timestamp in square brackets if present.
-    - Drops known header/log prefixes (workdir/model/provider/etc.).
-    - Drops MCP client startup errors (non-fatal noise).
-    - Strips a leading 'codex' tag if present.
+    Preserves assistant-authored whitespace while removing timestamps, headers, and prompt echoes.
     """
     if not line:
         return None
 
-    # Drop lines that are just timestamps
-    if _LOOSE_TIMESTAMP_LINE.match(line):
+    # Normalize newline handling but keep track so we can restore it.
+    newline = ""
+    if line.endswith("\r\n"):
+        newline = "\n"
+        body = line[:-2]
+    elif line.endswith("\n"):
+        newline = "\n"
+        body = line[:-1]
+    else:
+        body = line
+
+    stripped_for_check = body.strip()
+    if _LOOSE_TIMESTAMP_LINE.match(stripped_for_check):
         return None
 
-    s = _TIMESTAMP_PREFIX.sub("", line).strip()
+    s = _TIMESTAMP_PREFIX.sub("", body)
+    compare = s.lstrip()
+    lower_compare = compare.lower()
 
-    # Known non-content noise lines
-    lower = s.lower()
-    if s.startswith("--------"):
+    if compare.startswith("--------"):
         return None
-    if s.startswith("ERROR: MCP client for ") or "mcp client for" in lower:
+    if compare.startswith("ERROR: MCP client for ") or "mcp client for" in lower_compare:
         return None
     for p in _DROP_PREFIXES:
-        if s.startswith(p):
+        if compare.startswith(p):
             return None
 
-    # Drop user-echo lines, but keep assistant content if prefixed on same line
-    if s.startswith("User:"):
+    if compare.startswith("User:"):
         return None
-    if s.startswith("Assistant:"):
-        s = s[len("Assistant:"):].lstrip()
 
-    # Remove leading 'codex' label if present (with or without separator)
-    if lower.startswith("codex"):
-        s = s[len("codex"):].lstrip(" :\t-")
+    if compare.startswith("Assistant:"):
+        lead_len = len(s) - len(compare)
+        s = s[lead_len + len("Assistant:") :]
+        s = s.lstrip()
+        if not s:
+            return None
+        compare = s.lstrip()
+        lower_compare = compare.lower()
 
-    s = s.strip()
-    return s or None
+    if lower_compare.startswith("codex"):
+        lead_len = len(s) - len(compare)
+        s = s[lead_len:]
+        lower = s.lower()
+        if lower.startswith("codex"):
+            s = s[len("codex") :]
+            s = s.lstrip(" :\t-")
+
+    if not s:
+        return newline or None
+
+    return f"{s}{newline}" if newline else s
 
 
 async def run_codex_last_message(prompt: str, overrides: Optional[Dict] = None, images: Optional[List[str]] = None) -> str:
@@ -228,12 +248,12 @@ async def run_codex_last_message(prompt: str, overrides: Optional[Dict] = None, 
             raise CodexError(err)
         try:
             with open(out_path, "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read().strip()
+                text = f.read()
         except Exception:
             text = ""
-        if not text:
-            # Fallback to any stdout text, trimmed
-            text = (stdout_data or b"").decode(errors="ignore").strip()
+        if text == "":
+            # Fallback to any stdout text when the file is empty or missing.
+            text = (stdout_data or b"").decode(errors="ignore")
         return text
     except asyncio.TimeoutError:
         raise CodexError("codex execution timed out")
