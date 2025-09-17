@@ -16,6 +16,23 @@ _WARNED_LEGACY_ENV = False
 REASONING_EFFORT_SUFFIXES = ("minimal", "low", "medium", "high")
 
 
+def _augment_models(models: List[str]) -> List[str]:
+    """Add known aliases (e.g., strip -codex) and remove duplicates."""
+
+    augmented: list[str] = []
+    seen = set()
+    for model in models:
+        if model and model not in seen:
+            augmented.append(model)
+            seen.add(model)
+        if model.endswith('-codex'):
+            base = model[:-6]
+            if base and base not in seen:
+                augmented.append(base)
+                seen.add(base)
+    return augmented
+
+
 async def initialize_model_registry() -> List[str]:
     """Populate the available model list by querying the Codex CLI."""
 
@@ -27,7 +44,7 @@ async def initialize_model_registry() -> List[str]:
         models = await list_codex_models()
         if not models:
             raise CodexError("Codex CLI returned an empty model list")
-        _AVAILABLE_MODELS = models
+        _AVAILABLE_MODELS = _augment_models(models)
         _LAST_ERROR = None
         logger.info("Loaded %d Codex model(s): %s", len(models), ", ".join(models))
     except Exception as exc:  # pragma: no cover - startup failure path
@@ -36,7 +53,7 @@ async def initialize_model_registry() -> List[str]:
             "Falling back to default model list because Codex model discovery failed: %s",
             exc,
         )
-        _AVAILABLE_MODELS = [DEFAULT_MODEL]
+        _AVAILABLE_MODELS = _augment_models([DEFAULT_MODEL])
     return list(_AVAILABLE_MODELS)
 
 

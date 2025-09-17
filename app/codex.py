@@ -337,7 +337,13 @@ def _models_from_config() -> List[str]:
             if isinstance(profile, dict):
                 _add(profile.get("model"))
 
-    return _dedupe_preserving_order(models)
+    augmented = list(models)
+    for model in list(models):
+        if isinstance(model, str) and model.endswith('-codex'):
+            base = model[:-6]
+            if base:
+                augmented.append(base)
+    return _dedupe_preserving_order(augmented)
 
 
 async def run_codex(
