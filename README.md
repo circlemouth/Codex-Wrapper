@@ -128,7 +128,7 @@ Auth notes
 - With `CODEX_LOCAL_ONLY=1`, remote `base_url`s (like OpenAI) are rejected; be mindful when using API‑key mode.
 
 Codex highlights
-- model: Default is `gpt-5`. Others like `o3` and `o4-mini` work.
+- model: The Codex CLI currently surfaces `gpt-5` and `gpt-5-codex` for this account (verified 2025-09-17 via `GET /v1/models`). Append ` minimal` / ` low` / ` medium` / ` high` to request a specific reasoning effort (e.g. `gpt-5-codex high`).
 - sandbox_mode: Supports `read-only` (default) / `workspace-write` / `danger-full-access`. For `workspace-write`, `sandbox_workspace_write.network_access` (default false) can be tuned.
 - model_reasoning_effort: `minimal`/`low`/`medium`/`high`.
 

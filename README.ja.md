@@ -130,7 +130,7 @@ Responses API 互換は最小実装済み（非ストリーム/ストリーム�
 - `CODEX_LOCAL_ONLY=1` の場合、OpenAI などリモートの `base_url` は拒否されるため API キー運用時は設定に注意してください。
 
 Codex の主な設定
-- model: 既定は `gpt-5`。`o3` や `o4-mini` など他のモデルも利用可能です。
+- model: 現状このアカウントの Codex CLI では `gpt-5` と `gpt-5-codex` が利用可能です（2025-09-17 時点で `GET /v1/models` を確認）。 モデル名の末尾に ` minimal` / ` low` / ` medium` / ` high` を付けると推論モード（reasoning effort）を切り替えられます（例: `gpt-5-codex high`）。
 - sandbox_mode: `read-only`（既定）/`workspace-write`/`danger-full-access` をサポート。`workspace-write` の場合は `sandbox_workspace_write.network_access`（既定 false）を調整できます。
 - model_reasoning_effort: `minimal`/`low`/`medium`/`high`。
 

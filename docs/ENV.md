@@ -25,6 +25,7 @@ This project loads configuration via environment variables. It supports a `.env`
 
 - The server now discovers available models by invoking the Codex CLI (`codex models list`) during startup.
 - Whatever names Codex reports are exposed through `GET /v1/models`, and clients must use those exact names in the `model` field when calling the API.
+- Append ` minimal` / ` low` / ` medium` / ` high` to a model name to override the reasoning effort without using `x_codex.reasoning_effort`.
 - The legacy `CODEX_MODEL` environment variable is ignored. If it is present the server logs a warning so you can remove it from your configuration.
 
 ## Codex CLI Credentials and Providers

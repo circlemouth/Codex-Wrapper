@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .codex import CodexError, list_codex_models
 
@@ -12,6 +12,8 @@ DEFAULT_MODEL = "codex-cli"
 _AVAILABLE_MODELS: List[str] = [DEFAULT_MODEL]
 _LAST_ERROR: Optional[str] = None
 _WARNED_LEGACY_ENV = False
+
+REASONING_EFFORT_SUFFIXES = ("minimal", "low", "medium", "high")
 
 
 async def initialize_model_registry() -> List[str]:
@@ -38,10 +40,16 @@ async def initialize_model_registry() -> List[str]:
     return list(_AVAILABLE_MODELS)
 
 
-def get_available_models() -> List[str]:
+def get_available_models(include_reasoning_aliases: bool = False) -> List[str]:
     """Return a copy of the currently cached model list."""
 
-    return list(_AVAILABLE_MODELS)
+    models = list(_AVAILABLE_MODELS)
+    if include_reasoning_aliases and _AVAILABLE_MODELS:
+        alias: List[str] = []
+        for base in _AVAILABLE_MODELS:
+            alias.extend(f"{base} {suffix}" for suffix in REASONING_EFFORT_SUFFIXES)
+        models.extend(alias)
+    return models
 
 
 def get_default_model() -> str:
@@ -50,23 +58,35 @@ def get_default_model() -> str:
     return _AVAILABLE_MODELS[0] if _AVAILABLE_MODELS else DEFAULT_MODEL
 
 
-def choose_model(requested: Optional[str]) -> str:
-    """Validate the requested model name and return the selected value."""
+def choose_model(requested: Optional[str]) -> Tuple[str, Optional[str]]:
+    """Validate the requested model name and return the model plus optional reasoning effort."""
 
     if requested:
-        if requested in _AVAILABLE_MODELS:
-            return requested
-        available = ", ".join(_AVAILABLE_MODELS)
+        base_model, effort = _split_model_and_effort(requested)
+        if base_model in _AVAILABLE_MODELS:
+            return base_model, effort
+        available = ", ".join(get_available_models(include_reasoning_aliases=True))
         raise ValueError(
             f"Model '{requested}' is not available. Choose one of: {available or 'none'}"
         )
-    return get_default_model()
+    return get_default_model(), None
 
 
 def get_last_error() -> Optional[str]:
     """Return the most recent discovery error message (if any)."""
 
     return _LAST_ERROR
+
+
+def _split_model_and_effort(raw: str) -> Tuple[str, Optional[str]]:
+    normalized = " ".join(raw.split()) if raw else ""
+    if not normalized:
+        return normalized, None
+    if " " in normalized:
+        base, suffix = normalized.rsplit(" ", 1)
+        if base and suffix.lower() in REASONING_EFFORT_SUFFIXES:
+            return base, suffix.lower()
+    return normalized, None
 
 
 def _warn_if_legacy_env_present() -> None:

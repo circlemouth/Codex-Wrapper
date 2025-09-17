@@ -48,13 +48,13 @@ async def startup_event() -> None:
 @app.get("/v1/models", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
 async def list_models():
     """Return available model list."""
-    return {"data": [{"id": model} for model in get_available_models()]}
+    return {"data": [{"id": model} for model in get_available_models(include_reasoning_aliases=True)]}
 
 
 @app.post("/v1/chat/completions", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
 async def chat_completions(req: ChatCompletionRequest):
     try:
-        model_name = choose_model(req.model)
+        model_name, alias_effort = choose_model(req.model)
     except ValueError as e:
         raise HTTPException(
             status_code=404,
@@ -66,7 +66,10 @@ async def chat_completions(req: ChatCompletionRequest):
         )
 
     prompt, image_urls = build_prompt_and_images([m.dict() for m in req.messages])
-    overrides = req.x_codex.dict(exclude_none=True) if req.x_codex else None
+    x_overrides = req.x_codex.dict(exclude_none=True) if req.x_codex else {}
+    if alias_effort and "reasoning_effort" not in x_overrides:
+        x_overrides["reasoning_effort"] = alias_effort
+    overrides = x_overrides or None
 
     # Safety gate: only allow danger-full-access when explicitly enabled
     if overrides and overrides.get("sandbox") == "danger-full-access":
@@ -128,7 +131,7 @@ async def chat_completions(req: ChatCompletionRequest):
 @app.post("/v1/responses", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
 async def responses_endpoint(req: ResponsesRequest):
     try:
-        model = choose_model(req.model)
+        model, alias_effort = choose_model(req.model)
     except ValueError as e:
         raise HTTPException(
             status_code=404,
@@ -145,8 +148,9 @@ async def responses_endpoint(req: ResponsesRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Map reasoning.effort → x_codex.reasoning_effort
     overrides = {}
+    if alias_effort:
+        overrides["reasoning_effort"] = alias_effort
     if req.reasoning and req.reasoning.effort:
         overrides["reasoning_effort"] = req.reasoning.effort
 
@@ -162,6 +166,8 @@ async def responses_endpoint(req: ResponsesRequest):
     resp_id = f"resp_{uuid.uuid4().hex}"
     msg_id = f"msg_{uuid.uuid4().hex}"
     created = int(time.time())
+    response_model = req.model or model
+    codex_overrides = overrides or None
 
     image_paths: List[str] = []
     try:
@@ -183,13 +189,13 @@ async def responses_endpoint(req: ResponsesRequest):
                         "id": resp_id,
                         "object": "response",
                         "created": created,
-                        "model": model,
+                        "model": response_model,
                         "status": "in_progress",
                     }
                     yield f"event: response.created\ndata: {json.dumps(created_evt)}\n\n".encode()
 
                     buf: list[str] = []
-                    async for text in run_codex(prompt, overrides, image_paths, model=model):
+                    async for text in run_codex(prompt, codex_overrides, image_paths, model=model):
                         if text:
                             buf.append(text)
                             delta_evt = {"id": resp_id, "delta": text}
@@ -202,7 +208,7 @@ async def responses_endpoint(req: ResponsesRequest):
                     final_obj = ResponsesObject(
                         id=resp_id,
                         created=created,
-                        model=model,
+                        model=response_model,
                         status="completed",
                         output=[
                             ResponsesMessage(
@@ -225,11 +231,11 @@ async def responses_endpoint(req: ResponsesRequest):
             }
             return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)
         else:
-            final = await run_codex_last_message(prompt, overrides, image_paths, model=model)
+            final = await run_codex_last_message(prompt, codex_overrides, image_paths, model=model)
             resp = ResponsesObject(
                 id=resp_id,
                 created=created,
-                model=model,
+                model=response_model,
                 status="completed",
                 output=[
                     ResponsesMessage(

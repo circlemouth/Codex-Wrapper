@@ -9,6 +9,7 @@ Important: Always install Python libraries inside a virtual environment (venv).
 - Base URL: `http://<host>:8000/v1`
 - Auth: `Authorization: Bearer <PROXY_API_KEY>` (you may run without it if configured that way)
 - Model IDs: discovered at startup by running `codex models list`. Call `GET /v1/models` to inspect the exact names your Codex CLI reports.
+  - You can append ` minimal` / ` low` / ` medium` / ` high` to those model IDs to set the reasoning effort (for example: `gpt-5-codex high`).
 - Submodule: Codex reference lives in `submodules/codex`
 - Supported APIs: `/v1/chat/completions` and minimal `/v1/responses` (see `docs/RESPONSES_API_PLAN.ja.md` – Japanese)
 
