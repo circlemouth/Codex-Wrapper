@@ -17,7 +17,7 @@ class XCodexOptions(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    model: Optional[str] = Field(default="codex-cli")
+    model: Optional[str] = Field(default=None)
     messages: List[ChatMessage]
     stream: Optional[bool] = False
     temperature: Optional[float] = None
@@ -56,7 +56,7 @@ class ResponsesReasoning(BaseModel):
 
 
 class ResponsesRequest(BaseModel):
-    model: Optional[str] = Field(default="codex-cli")
+    model: Optional[str] = Field(default=None)
     input: Any
     stream: Optional[bool] = False
     reasoning: Optional[ResponsesReasoning] = None

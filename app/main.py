@@ -11,6 +11,11 @@ from fastapi.responses import StreamingResponse
 from .codex import CodexError, run_codex, run_codex_last_message
 from .config import settings
 from .deps import rate_limiter, verify_api_key
+from .model_registry import (
+    choose_model,
+    get_available_models,
+    initialize_model_registry,
+)
 from .security import assert_local_only_or_raise
 from .prompt import build_prompt_and_images, normalize_responses_input
 from .images import save_image_to_temp
@@ -35,14 +40,31 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_event() -> None:
+    await initialize_model_registry()
+
+
 @app.get("/v1/models", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
 async def list_models():
     """Return available model list."""
-    return {"data": [{"id": "codex-cli"}]}
+    return {"data": [{"id": model} for model in get_available_models()]}
 
 
 @app.post("/v1/chat/completions", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
 async def chat_completions(req: ChatCompletionRequest):
+    try:
+        model_name = choose_model(req.model)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": str(e),
+                "type": "invalid_request_error",
+                "code": "model_not_found",
+            },
+        )
+
     prompt, image_urls = build_prompt_and_images([m.dict() for m in req.messages])
     overrides = req.x_codex.dict(exclude_none=True) if req.x_codex else None
 
@@ -73,7 +95,7 @@ async def chat_completions(req: ChatCompletionRequest):
     try:
         if req.stream:
             async def event_gen() -> AsyncIterator[bytes]:
-                async for text in run_codex(prompt, overrides, image_paths):
+                async for text in run_codex(prompt, overrides, image_paths, model=model_name):
                     if text:
                         chunk = {
                             "choices": [
@@ -85,7 +107,7 @@ async def chat_completions(req: ChatCompletionRequest):
 
             return StreamingResponse(event_gen(), media_type="text/event-stream")
         else:
-            final = await run_codex_last_message(prompt, overrides, image_paths)
+            final = await run_codex_last_message(prompt, overrides, image_paths, model=model_name)
             resp = ChatCompletionResponse(
                 choices=[ChatChoice(message=ChatMessageResponse(content=final))]
             )
@@ -105,6 +127,18 @@ async def chat_completions(req: ChatCompletionRequest):
 
 @app.post("/v1/responses", dependencies=[Depends(rate_limiter), Depends(verify_api_key)])
 async def responses_endpoint(req: ResponsesRequest):
+    try:
+        model = choose_model(req.model)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": str(e),
+                "type": "invalid_request_error",
+                "code": "model_not_found",
+            },
+        )
+
     # Normalize input → messages
     try:
         messages = normalize_responses_input(req.input)
@@ -128,7 +162,6 @@ async def responses_endpoint(req: ResponsesRequest):
     resp_id = f"resp_{uuid.uuid4().hex}"
     msg_id = f"msg_{uuid.uuid4().hex}"
     created = int(time.time())
-    model = req.model or "codex-cli"
 
     image_paths: List[str] = []
     try:
@@ -156,7 +189,7 @@ async def responses_endpoint(req: ResponsesRequest):
                     yield f"event: response.created\ndata: {json.dumps(created_evt)}\n\n".encode()
 
                     buf: list[str] = []
-                    async for text in run_codex(prompt, overrides, image_paths):
+                    async for text in run_codex(prompt, overrides, image_paths, model=model):
                         if text:
                             buf.append(text)
                             delta_evt = {"id": resp_id, "delta": text}
@@ -192,7 +225,7 @@ async def responses_endpoint(req: ResponsesRequest):
             }
             return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)
         else:
-            final = await run_codex_last_message(prompt, overrides, image_paths)
+            final = await run_codex_last_message(prompt, overrides, image_paths, model=model)
             resp = ResponsesObject(
                 id=resp_id,
                 created=created,

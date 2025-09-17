@@ -14,13 +14,18 @@ This project loads configuration via environment variables. It supports a `.env`
 - `RATE_LIMIT_PER_MINUTE`: Requests per minute allowed per client. `0` disables limiting.
 - `CODEX_PATH`: Path to `codex` binary (default: `codex`).
 - `CODEX_WORKDIR`: Working directory for Codex runs (server enforces `cwd` to this path).
-- `CODEX_MODEL`: Model string passed to Codex (e.g., `o3`, `o4-mini`, `gpt-5`). Must be valid for the configured provider.
 - `CODEX_SANDBOX_MODE`: `read-only` | `workspace-write` | `danger-full-access`.
 - `CODEX_REASONING_EFFORT`: `minimal` | `low` | `medium` | `high`.
 - `CODEX_LOCAL_ONLY`: `0`/`1`. When `1`, the server rejects non‑local provider base URLs.
 - `CODEX_ALLOW_DANGER_FULL_ACCESS`: `0`/`1`. When `1`, the API may request `x_codex.sandbox=danger-full-access`.
 - `CODEX_TIMEOUT`: Server‑side timeout for Codex runs (seconds; default 120).
 - `CODEX_ENV_FILE`: Name of the env file to load (set as an OS env var).
+
+### Model Selection
+
+- The server now discovers available models by invoking the Codex CLI (`codex models list`) during startup.
+- Whatever names Codex reports are exposed through `GET /v1/models`, and clients must use those exact names in the `model` field when calling the API.
+- The legacy `CODEX_MODEL` environment variable is ignored. If it is present the server logs a warning so you can remove it from your configuration.
 
 ## Codex CLI Credentials and Providers
 

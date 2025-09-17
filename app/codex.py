@@ -1,9 +1,11 @@
 import asyncio
+import json
+import logging
 import os
+import re
 import shutil
 import tempfile
-from typing import AsyncIterator, Dict, Optional, List
-import re
+from typing import AsyncIterator, Dict, List, Optional
 
 from .config import settings
 
@@ -12,7 +14,45 @@ class CodexError(Exception):
     """Custom error for Codex failures."""
 
 
-def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None, images: Optional[List[str]] = None) -> list[str]:
+logger = logging.getLogger(__name__)
+
+
+def _resolve_codex_executable() -> str:
+    """Return the resolved Codex CLI executable path or raise CodexError."""
+
+    codex_exe = settings.codex_path
+    if os.path.isabs(codex_exe):
+        if not (os.path.isfile(codex_exe) and os.access(codex_exe, os.X_OK)):
+            raise CodexError(
+                f"CODEX_PATH '{codex_exe}' is not executable or not found"
+            )
+        return codex_exe
+
+    exe = shutil.which(codex_exe)
+    if not exe:
+        raise CodexError(
+            f"codex binary not found in PATH (CODEX_PATH='{codex_exe}'). Install Codex or set CODEX_PATH."
+        )
+    return exe
+
+
+def _ensure_workdir_exists() -> None:
+    """Ensure Codex working directory exists."""
+
+    try:
+        os.makedirs(settings.codex_workdir, exist_ok=True)
+    except Exception as e:
+        raise CodexError(
+            f"Failed to create CODEX_WORKDIR '{settings.codex_workdir}': {e}"
+        )
+
+
+def _build_cmd_and_env(
+    prompt: str,
+    overrides: Optional[Dict] = None,
+    images: Optional[List[str]] = None,
+    model: Optional[str] = None,
+) -> list[str]:
     """Build base `codex exec` command with configs and optional images."""
     cfg = {
         "sandbox_mode": settings.sandbox_mode,
@@ -33,27 +73,10 @@ def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None, images: Op
         cfg.update(mapped)
 
     # Resolve codex executable
-    codex_exe = settings.codex_path
-    if os.path.isabs(codex_exe):
-        if not (os.path.isfile(codex_exe) and os.access(codex_exe, os.X_OK)):
-            raise CodexError(
-                f"CODEX_PATH '{codex_exe}' is not executable or not found"
-            )
-        exe = codex_exe
-    else:
-        exe = shutil.which(codex_exe)
-        if not exe:
-            raise CodexError(
-                f"codex binary not found in PATH (CODEX_PATH='{codex_exe}'). Install Codex or set CODEX_PATH."
-            )
+    exe = _resolve_codex_executable()
 
     # Ensure workdir exists (create if missing)
-    try:
-        os.makedirs(settings.codex_workdir, exist_ok=True)
-    except Exception as e:
-        raise CodexError(
-            f"Failed to create CODEX_WORKDIR '{settings.codex_workdir}': {e}"
-        )
+    _ensure_workdir_exists()
 
     # Note: Rust CLI does not support `-q`. Use human output or JSON mode selectively.
     cmd = [exe, "exec", prompt, "--color", "never"]
@@ -70,8 +93,8 @@ def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None, images: Op
         else:
             cmd += ["--config", f"{key}={value}"]
 
-    if settings.codex_model:
-        cmd += ["--config", f"model=\"{settings.codex_model}\""]
+    if model:
+        cmd += ["--config", f"model=\"{model}\""]
 
     if overrides and overrides.get("sandbox") == "workspace-write":
         network = overrides.get("network_access")
@@ -83,12 +106,144 @@ def _build_cmd_and_env(prompt: str, overrides: Optional[Dict] = None, images: Op
     return cmd
 
 
-async def run_codex(prompt: str, overrides: Optional[Dict] = None, images: Optional[List[str]] = None) -> AsyncIterator[str]:
+async def list_codex_models() -> List[str]:
+    """Query the Codex CLI for available models."""
+
+    exe = _resolve_codex_executable()
+    _ensure_workdir_exists()
+
+    attempts = [
+        [exe, "models", "list", "--json"],
+        [exe, "models", "--json"],
+        [exe, "models", "list"],
+        [exe, "models"],
+    ]
+    errors: List[str] = []
+
+    for cmd in attempts:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=settings.codex_workdir,
+            )
+        except FileNotFoundError as e:
+            raise CodexError(
+                f"Failed to launch codex: {e}. Check CODEX_PATH and PATH."
+            )
+        except PermissionError as e:
+            raise CodexError(
+                f"Permission error launching codex: {e}. Ensure the binary is executable."
+            )
+        except Exception as e:  # pragma: no cover - unexpected failure
+            errors.append(f"{' '.join(cmd)} -> {e}")
+            continue
+
+        try:
+            stdout_data, stderr_data = await asyncio.wait_for(
+                proc.communicate(), timeout=settings.timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            errors.append(f"{' '.join(cmd)} -> timed out")
+            continue
+
+        if proc.returncode != 0:
+            err_text = (stderr_data or b"").decode().strip() or f"exit code {proc.returncode}"
+            errors.append(f"{' '.join(cmd)} -> {err_text}")
+            continue
+
+        models = _parse_model_listing((stdout_data or b"").decode())
+        if models:
+            logger.debug("Resolved Codex models via '%s': %s", " ".join(cmd), models)
+            return models
+
+        errors.append(f"{' '.join(cmd)} -> no models returned")
+
+    detail = "; ".join(errors) if errors else "no output"
+    logger.warning("Unable to list Codex models (%s)", detail)
+    raise CodexError(f"Unable to list Codex models ({detail})")
+
+
+def _parse_model_listing(raw: str) -> List[str]:
+    """Parse Codex CLI model listings from JSON or plaintext."""
+
+    if not raw:
+        return []
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    else:
+        items = None
+        if isinstance(data, dict):
+            for key in ("data", "models", "items"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    items = value
+                    break
+            else:
+                if isinstance(data.get("id"), str):
+                    items = [data]
+        elif isinstance(data, list):
+            items = data
+
+        if items is not None:
+            parsed: List[str] = []
+            for item in items:
+                if isinstance(item, str):
+                    parsed.append(item)
+                    continue
+                if isinstance(item, dict):
+                    for key in ("id", "name", "model"):
+                        value = item.get(key)
+                        if isinstance(value, str):
+                            parsed.append(value)
+                            break
+            return _dedupe_preserving_order(parsed)
+
+    parsed_lines: List[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lower = stripped.lower()
+        if lower.startswith("available models"):
+            continue
+        token = stripped.split()[0]
+        lowered_token = token.lower()
+        if lowered_token in {"model", "name", "id"}:
+            continue
+        parsed_lines.append(token)
+
+    return _dedupe_preserving_order(parsed_lines)
+
+
+def _dedupe_preserving_order(values: List[str]) -> List[str]:
+    seen = set()
+    result: List[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+async def run_codex(
+    prompt: str,
+    overrides: Optional[Dict] = None,
+    images: Optional[List[str]] = None,
+    model: Optional[str] = None,
+) -> AsyncIterator[str]:
     """Run codex CLI as async generator yielding filtered stdout lines suitable for SSE.
 
     Filters human-oriented headers and MCP warnings so only assistant text remains.
     """
-    cmd = _build_cmd_and_env(prompt, overrides, images)
+    cmd = _build_cmd_and_env(prompt, overrides, images, model)
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -224,14 +379,19 @@ def filter_codex_stdout_line(line: str) -> Optional[str]:
     return f"{s}{newline}" if newline else s
 
 
-async def run_codex_last_message(prompt: str, overrides: Optional[Dict] = None, images: Optional[List[str]] = None) -> str:
+async def run_codex_last_message(
+    prompt: str,
+    overrides: Optional[Dict] = None,
+    images: Optional[List[str]] = None,
+    model: Optional[str] = None,
+) -> str:
     """Run codex and return only the final assistant message using --json and --output-last-message.
 
     This avoids human oriented headers and logs from the CLI.
     """
-    cmd = _build_cmd_and_env(prompt, overrides, images)
+    cmd = _build_cmd_and_env(prompt, overrides, images, model)
     # Create temp file in workdir to ensure permissions
-    os.makedirs(settings.codex_workdir, exist_ok=True)
+    _ensure_workdir_exists()
     with tempfile.NamedTemporaryFile(prefix="codex-last-", suffix=".txt", dir=settings.codex_workdir, delete=False) as tf:
         out_path = tf.name
     cmd = cmd + ["--json", "--output-last-message", out_path]

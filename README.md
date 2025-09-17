@@ -64,7 +64,7 @@ mkdir -p ~/.codex
 cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 ```
 
-To use OpenAI’s gpt‑5 model (when using API‑key mode), set `OPENAI_API_KEY` as an environment variable and set `.env` variable `CODEX_MODEL=gpt-5`. For OAuth, `OPENAI_API_KEY` is not required.
+To use OpenAI’s gpt‑5 model (when using API‑key mode), configure the Codex CLI with the appropriate provider credentials. This wrapper now queries the CLI for available models at startup, so call `GET /v1/models` to discover the names you can use. For OAuth, `OPENAI_API_KEY` is not required.
 
 5) Environment Variables (.env supported)
 
@@ -107,7 +107,7 @@ This server reads `.env` and uses the following variables. Example values and co
 - CODEX_PATH: Path to the `codex` binary. Default `codex`.
 - CODEX_WORKDIR: Working directory for Codex executions (`cwd`). Default `/workspace`.
   - Ensure this directory is writable by the server user; otherwise Codex fails with `Failed to create CODEX_WORKDIR ... Read-only file system`.
-- CODEX_MODEL: String passed as Codex `model`, e.g., `o3`, `o4-mini`, `gpt-5` (see `submodules/codex/docs/config.md`, “model”).
+- CODEX_MODEL: **Deprecated.** Model selection is automatic; setting this variable has no effect (a warning is logged if present).
   - Note: The string is free‑form, but it must be a model name supported by the selected `model_provider` (OpenAI by default).
 - CODEX_SANDBOX_MODE: Sandbox mode. One of: `read-only` | `workspace-write` | `danger-full-access`.
   - For `workspace-write`, the wrapper adds `--config sandbox_workspace_write='{ network_access = <true|false> }'` when the API request specifies `x_codex.network_access`.
