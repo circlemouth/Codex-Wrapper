@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # When false, such requests are blocked if received (unless CODEX_LOCAL_ONLY is also false
     # in older behavior). Prefer enabling this explicitly for safety.
     allow_danger_full_access: bool = Field(default=False, alias="CODEX_ALLOW_DANGER_FULL_ACCESS")
+    # Deprecated: ignored, but kept to avoid startup failures when legacy env remains.
+    codex_model: Optional[str] = Field(default=None, alias="CODEX_MODEL")
 
     # Default to loading from ".env". You can override the path by
     # passing `_env_file` when instantiating `Settings` (see bottom).

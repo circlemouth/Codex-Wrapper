@@ -7,6 +7,11 @@ import shutil
 import tempfile
 from typing import AsyncIterator, Dict, List, Optional
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback
+    import tomli as tomllib  # type: ignore
+
 from .config import settings
 
 
@@ -162,6 +167,26 @@ async def list_codex_models() -> List[str]:
 
         errors.append(f"{' '.join(cmd)} -> no models returned")
 
+    try:
+        proto_models = await _probe_models_via_proto(exe)
+    except Exception as exc:  # pragma: no cover - network/process failure path
+        errors.append(f"{exe} proto -> {exc}")
+    else:
+        if proto_models:
+            logger.debug("Resolved Codex models via 'proto': %s", proto_models)
+            return proto_models
+        errors.append(f"{exe} proto -> no models returned")
+
+    try:
+        config_models = _models_from_config()
+    except Exception as exc:  # pragma: no cover - file parsing failure
+        errors.append(f"config.toml -> {exc}")
+    else:
+        if config_models:
+            logger.debug("Resolved Codex models via config: %s", config_models)
+            return config_models
+        errors.append("config.toml -> no models returned")
+
     detail = "; ".join(errors) if errors else "no output"
     logger.warning("Unable to list Codex models (%s)", detail)
     raise CodexError(f"Unable to list Codex models ({detail})")
@@ -222,6 +247,61 @@ def _parse_model_listing(raw: str) -> List[str]:
     return _dedupe_preserving_order(parsed_lines)
 
 
+async def _probe_models_via_proto(exe: str) -> List[str]:
+    """Use `codex proto` to discover the current default model."""
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            exe,
+            "proto",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=settings.codex_workdir,
+        )
+    except FileNotFoundError as exc:
+        raise CodexError(f"Failed to launch codex proto: {exc}")
+
+    discovered: Optional[str] = None
+    try:
+        assert proc.stdout is not None
+        while True:
+            try:
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=settings.timeout_seconds)
+            except asyncio.TimeoutError as exc:
+                raise CodexError("codex proto did not emit session_configured in time") from exc
+            if not line:
+                break
+            try:
+                payload = json.loads(line.decode())
+            except json.JSONDecodeError:
+                continue
+            msg = payload.get("msg") if isinstance(payload, dict) else None
+            if isinstance(msg, dict) and msg.get("type") == "session_configured":
+                model = msg.get("model")
+                if isinstance(model, str) and model:
+                    discovered = model
+                break
+    finally:
+        shutdown_payload = json.dumps({"id": "wrapper_shutdown", "op": {"type": "shutdown"}}) + "\n"
+        if proc.stdin is not None:
+            try:
+                proc.stdin.write(shutdown_payload.encode())
+                await proc.stdin.drain()
+            except Exception:
+                pass
+            proc.stdin.close()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+
+    if discovered:
+        return [discovered]
+    return []
+
+
 def _dedupe_preserving_order(values: List[str]) -> List[str]:
     seen = set()
     result: List[str] = []
@@ -231,6 +311,33 @@ def _dedupe_preserving_order(values: List[str]) -> List[str]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def _models_from_config() -> List[str]:
+    """Extract model names from ~/.codex/config.toml as a fallback."""
+
+    codex_home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    config_path = os.path.join(codex_home, "config.toml")
+    if not os.path.isfile(config_path):
+        return []
+
+    with open(config_path, "rb") as fh:
+        data = tomllib.load(fh)
+
+    models: List[str] = []
+
+    def _add(value: Optional[str]) -> None:
+        if isinstance(value, str) and value:
+            models.append(value)
+
+    _add(data.get("model"))
+    profiles = data.get("profiles")
+    if isinstance(profiles, dict):
+        for profile in profiles.values():
+            if isinstance(profile, dict):
+                _add(profile.get("model"))
+
+    return _dedupe_preserving_order(models)
 
 
 async def run_codex(
