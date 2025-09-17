@@ -64,7 +64,7 @@ mkdir -p ~/.codex
 cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 ```
 
-OpenAI の gpt-5 モデルを使うには、（APIキー運用時は）`OPENAI_API_KEY` を環境変数として設定し、`.env` などで `CODEX_MODEL=gpt-5` を指定します。OAuth運用時は `OPENAI_API_KEY` は必須ではありません。
+OpenAI の gpt-5 モデルを使うには、（APIキー運用時は）Codex CLI 側で該当プロバイダーの資格情報を設定してください。このラッパーは起動時に `codex models list` を実行して利用可能なモデル名を自動検出します。利用可能なモデル名は `GET /v1/models` で確認できます。OAuth運用時は `OPENAI_API_KEY` は必須ではありません。
 
 5) 環境変数の設定（.env 対応）
 
@@ -111,7 +111,7 @@ Responses API 互換は最小実装済み（非ストリーム/ストリーム�
 - CODEX_PATH: `codex` バイナリのパス。既定値は `codex`。
 - CODEX_WORKDIR: Codex 実行時の作業ディレクトリ (`cwd`)。既定値は `/workspace`。
   - サーバープロセスから書き込み可能なパスを指定してください。読み取り専用パスの場合は `Failed to create CODEX_WORKDIR ... Read-only file system` エラーになります。
-- CODEX_MODEL: Codex の `model` に渡す文字列（例: `o3`, `o4-mini`, `gpt-5`）。利用する `model_provider` がサポートするモデル名である必要があります。
+- CODEX_MODEL: **廃止**。モデル選択は自動化されており、この変数を設定しても無視され（起動時に警告が出力されます）。
 - CODEX_SANDBOX_MODE: サンドボックスモード。`read-only` / `workspace-write` / `danger-full-access` のいずれか。
   - `workspace-write` の場合、API リクエストで `x_codex.network_access` が指定されると `--config sandbox_workspace_write='{ network_access = <true|false> }'` を付与します。
 - CODEX_REASONING_EFFORT: 推論強度。`minimal` / `low` / `medium` / `high`（既定は `medium`）。

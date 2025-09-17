@@ -54,7 +54,7 @@
 - FastAPI：HTTP の受け口。SSE にも対応。
 - CodexRunner：`codex exec` を非同期サブプロセスで走らせ、行単位で stdout を流す。失敗時は stderr も吸い上げて整形。
 - PromptBuilder：`messages` を 1 本の指示文にまとめる（`system` を先頭へ）。
-- Config：環境変数で最小制御（例：`CODEX_MODEL`、`CODEX_WORKDIR`、`CODEX_SANDBOX_MODE`、`PROXY_API_KEY`）。
+- Config：環境変数で最小制御（例：`CODEX_WORKDIR`、`CODEX_SANDBOX_MODE`、`PROXY_API_KEY`）。
 - Logger：アプリ側ログ＋Codex セッション JSONL のパスを記録（必要なら後で読み込み）。
 
 ## 4. Codex 呼び出しの取り決め
@@ -97,7 +97,7 @@
 - `CODEX_SANDBOX_MODE`：`read-only` / `workspace-write` / `danger-full-access`（既定は安全側）。
 - `CODEX_REASONING_EFFORT`：`minimal` / `low` / `medium` / `high`（既定は `medium`）。
 - `CODEX_LOCAL_ONLY`：`1` でローカル固定（プロバイダの `base_url` がローカル以外なら 400）。
-- `CODEX_MODEL`：`o3` / `o4-mini` / `gpt-5` 等（任意）。
+- `CODEX_MODEL`：廃止。サーバー起動時に `codex models list` を実行して利用可能なモデルを自動検出する。
 - `CODEX_PATH`：`codex` 実行ファイルへのパスを上書きしたい場合に使用。
 - `CODEX_TIMEOUT`：Codex 実行のタイムアウト秒数（既定 120）。
 - `RATE_LIMIT_PER_MINUTE`：1 分あたりの許可リクエスト数（既定 60）。
@@ -177,7 +177,7 @@ CodexRunner のコマンド
   # 任意: ローカル provider 固定（例: ollama）
   # "--config", "model_provider='ollama'",
   # "--config", "model_providers.ollama='{ name = \"Ollama\", base_url = \"http://localhost:11434/v1\" }'",
-  # "--config", f"model='{os.getenv('CODEX_MODEL','llama3.1')}'",
+  # 旧仕様：環境変数 `CODEX_MODEL` を `--config model` に渡していたが、現在は自動検出されたモデルを使う。
 ]` のように組み立て、空値は落とす。
 - `cwd=CODEX_WORKDIR` を必ず指定。
 - `CODEX_LOCAL_ONLY=1` の場合、`$CODEX_HOME/config.toml` の `model_providers` と `OPENAI_BASE_URL` を検査し、ローカル以外の `base_url` なら実行前に 400 で拒否。

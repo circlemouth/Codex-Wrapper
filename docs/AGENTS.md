@@ -8,7 +8,7 @@ Important: Always install Python libraries inside a virtual environment (venv).
 
 - Base URL: `http://<host>:8000/v1`
 - Auth: `Authorization: Bearer <PROXY_API_KEY>` (you may run without it if configured that way)
-- Model ID: `codex-cli` (display name)
+- Model IDs: discovered at startup by running `codex models list`. Call `GET /v1/models` to inspect the exact names your Codex CLI reports.
 - Submodule: Codex reference lives in `submodules/codex`
 - Supported APIs: `/v1/chat/completions` and minimal `/v1/responses` (see `docs/RESPONSES_API_PLAN.ja.md` – Japanese)
 
@@ -32,10 +32,10 @@ Notes
 ## Supported APIs
 
 - `GET /v1/models`
-  - Example: `{ "data": [{ "id": "codex-cli" }] }`
+  - Example: `{ "data": [{ "id": "o4-mini" }, { "id": "gpt-4.1" }] }`
 - `POST /v1/chat/completions`
   - Input (subset)
-    - `model`: optional; defaults to `codex-cli`
+    - `model`: optional; defaults to the first model reported by Codex at startup
   - `messages`: OpenAI format (`system`/`user`/`assistant`). User messages may include `input_image` parts.
     - `stream`: `true` for SSE streaming
     - `temperature`, `max_tokens`: accepted but ignored for the initial version
@@ -57,9 +57,9 @@ client = OpenAI(
     api_key="YOUR_PROXY_API_KEY",  # if required
 )
 
-# Non-stream
+# Non-stream (replace with a name from GET /v1/models, e.g. "o4-mini")
 resp = client.chat.completions.create(
-    model="codex-cli",
+    model="o4-mini",
     messages=[
         {"role": "system", "content": "You are a helpful coding agent."},
         {"role": "user", "content": "Say hello and exit."},
@@ -69,7 +69,7 @@ print(resp.choices[0].message.content)
 
 # Image input
 resp = client.chat.completions.create(
-    model="codex-cli",
+    model="o4-mini",
     messages=[
         {
             "role": "user",
@@ -84,7 +84,7 @@ print(resp.choices[0].message.content)
 
 # Stream (SSE)
 with client.chat.completions.create(
-    model="codex-cli",
+    model="o4-mini",
     messages=[{"role": "user", "content": "Write 'hello'"}],
     stream=True,
 ) as stream:
@@ -101,7 +101,7 @@ Non‑stream
 ```python
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY")
-resp = client.responses.create(model="codex-cli", input="Say hello")
+resp = client.responses.create(model="o4-mini", input="Say hello")
 print(resp.output[0].content[0].text)
 ```
 
@@ -110,7 +110,7 @@ Stream (SSE)
 curl -N \
   -H "Authorization: Bearer $PROXY_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"codex-cli","input":"Say hello","stream":true}' \
+  -d '{"model":"o4-mini","input":"Say hello","stream":true}' \
   http://localhost:8000/v1/responses
 ```
 
@@ -155,7 +155,7 @@ curl -N \
 
 - `PROXY_API_KEY`: auth for this proxy (optional)
 - `CODEX_WORKDIR`: working directory for Codex runs
-- `CODEX_MODEL`: model choice, e.g., `o3` / `o4-mini` / `gpt-5`
+- `CODEX_MODEL`: **deprecated**. Startup now queries available models automatically; setting this variable has no effect other than a warning.
 - `CODEX_PATH`: override path to `codex` binary
 - `CODEX_SANDBOX_MODE`: `read-only` / `workspace-write` / `danger-full-access`
 - `CODEX_REASONING_EFFORT`: `minimal` / `low` / `medium` / `high`
