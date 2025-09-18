@@ -5,3 +5,8 @@ __pycache__/
 .codex/
 codex-config.toml
 AGENTS.local.md
+# Wrapper profile overrides (ignored; samples live in workspace/codex_profile/)
+workspace/codex_profile/codex_agents.md
+workspace/codex_profile/codex_config.toml
+workspace/codex_profile/agent.md
+workspace/codex_profile/config.toml

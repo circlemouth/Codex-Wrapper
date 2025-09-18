@@ -279,7 +279,7 @@ git submodule update --remote submodules/codex
 - 429: rate limit reached; adjust `RATE_LIMIT_PER_MINUTE`
 - Extra CLI banner or `MCP client for ... failed to start` in output:
   - Non‑stream uses `codex exec --json --output-last-message` to keep output clean.
-  - Stream filters human banners (`OpenAI Codex v`, `workdir:`, `model:`, `provider:`, `approval:`, `sandbox:`, `reasoning`, `User instructions:`, `User:`, `Assistant:`, `tokens used:`) and MCP startup warnings.
+  - Stream now forwards Codex CLI output verbatim; expect banners/warnings unless you trim them in your Codex profile or CLI config.
   - Root fix: remove/comment `mcp_servers` in `~/.codex/config.toml` to avoid timeouts from unconfigured servers.
 
 ## Codex TOML config
@@ -310,3 +310,12 @@ cp docs/examples/AGENTS.example.md AGENTS.md
 ```
 
 Update the copied file with your project-specific notes. Codex reads AGENTS.md files at the root of the working directory tree when executing requests from this API.
+
+## Wrapper bootstrap directory (agent/config overrides)
+
+- The repository ships a managed profile directory: `workspace/codex_profile/`.
+  - `codex_agents.sample.md` / `codex_config.sample.toml` act as templates. Rename or copy them to `codex_agents.md` / `codex_config.toml` to activate overrides.
+  - During server startup the wrapper copies those files (if present) into the Codex home (`AGENTS.md` / `config.toml`).
+  - 片方だけ配置した場合は存在するファイルのみがコピーされます。
+- Legacy filenames (`agent.md`, `config.toml`) continue to work but trigger a startup warning so you can migrate at your own pace.
+- Set `CODEX_WRAPPER_PROFILE_DIR` if you want to store these overrides elsewhere. The path should contain the new filenames (`codex_agents.md`, `codex_config.toml`).

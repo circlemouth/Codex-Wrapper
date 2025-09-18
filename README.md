@@ -78,6 +78,15 @@ cp docs/examples/AGENTS.example.md $CODEX_WORKDIR/AGENTS.md
 
 With `CODEX_WORKDIR` set (default `/workspace`), Codex merges any `AGENTS.md` files under that directory hierarchy when the wrapper executes requests.
 
+4c) Optional: Wrapper bootstrap profile overrides
+
+The repository ships sample overrides in `workspace/codex_profile/`:
+
+- `codex_agents.sample.md` → rename/copy to `codex_agents.md`
+- `codex_config.sample.toml` → rename/copy to `codex_config.toml`
+
+When these files exist, the server copies them into the Codex home (`AGENTS.md` / `config.toml`) at startup. Legacy filenames (`agent.md` / `config.toml`) are still honoured for backwards compatibility, but the wrapper logs a warning so you can migrate safely. The real override files stay ignored by git (see `.gitignore`) to keep local, project-specific instructions out of version control.
+
 5) Environment Variables (.env supported)
 
 This server automatically loads `.env` using `pydantic-settings`. See `docs/ENV.md` for complete details.
@@ -110,6 +119,8 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 
 See `docs/IMPLEMENTATION_PLAN.ja.md` (Japanese) and `docs/AGENTS.md` for details.
 
+> Streaming responses now forward Codex CLI output verbatim. Adjust your Codex profile/config if you want to suppress banners or warnings.
+
 ### Models exposed by `/v1/models`
 
 Sample response on 2025-09-18 (call the endpoint in your environment to confirm):
@@ -132,6 +143,7 @@ This server reads `.env` and uses the following variables. Example values and co
   - Ensure this directory is writable by the server user; otherwise Codex fails with `Failed to create CODEX_WORKDIR ... Read-only file system`.
   - Codex merges any `AGENTS.md` files under this directory tree when the wrapper runs requests; copy `docs/examples/AGENTS.example.md` here (or deeper) to provide project instructions.
 - CODEX_CONFIG_DIR: Optional directory treated as `CODEX_HOME` for this wrapper. When set, the server creates it if missing and runs Codex CLI with that directory as its config root; place wrapper-specific `config.toml`, `auth.json`, or MCP settings here.
+- CODEX_WRAPPER_PROFILE_DIR: Optional directory containing `codex_agents.md` / `codex_config.toml` that the wrapper copies into the Codex home before startup. Defaults to `workspace/codex_profile/`; the repository only ships samples (`codex_agents.sample.md`, `codex_config.sample.toml`). Legacy filenames (`agent.md`, `config.toml`) remain supported with a startup warning to ease migration.
 - CODEX_MODEL: **Deprecated.** Model selection is automatic; setting this variable has no effect (a warning is logged if present).
   - Note: The string is free‑form, but it must be a model name supported by the selected `model_provider` (OpenAI by default).
 - CODEX_SANDBOX_MODE: Sandbox mode. One of: `read-only` | `workspace-write` | `danger-full-access`.

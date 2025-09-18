@@ -78,6 +78,15 @@ cp docs/examples/AGENTS.example.md "$CODEX_WORKDIR/AGENTS.md"
 
 `CODEX_WORKDIR`（既定 `/workspace`）を設定すると、ラッパーはそのディレクトリ階層に存在する `AGENTS.md` を Codex へ連結します。プロジェクト固有の運用ルールを共有したいときに活用してください。
 
+4c) ラッパーのプロファイル上書き（任意）
+
+リポジトリには `workspace/codex_profile/` にサンプルファイルが含まれています。
+
+- `codex_agents.sample.md` → `codex_agents.md` にリネームまたはコピー
+- `codex_config.sample.toml` → `codex_config.toml` にリネームまたはコピー
+
+これらのファイルが存在する場合に限り、サーバー起動時に Codex のホームディレクトリ (`AGENTS.md` / `config.toml`) へ自動コピーされます。互換性のために旧名称（`agent.md` / `config.toml`）も読み込みますが、起動時に警告が表示されるので新名称へ移行してください。実運用用のファイルは `.gitignore` で除外されているため、秘密情報をコミットせずに個別設定を保管できます。
+
 5) 環境変数の設定（.env 対応）
 
 このリポジトリは `.env` から環境変数を自動で読み込みます（`pydantic-settings`）。詳細は `docs/ENV.md` を参照してください（英語）。
@@ -112,6 +121,8 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 
 詳細は `docs/IMPLEMENTATION_PLAN.ja.md` と `docs/AGENTS.md`（英語）を参照してください。
 
+> ストリーミング応答は Codex CLI の出力をそのまま転送します。バナーや警告を抑止したい場合は Codex 側のプロファイル／設定で制御してください。
+
 ### `/v1/models` で取得できるモデル一覧
 
 2025-09-18 時点でのサンプルレスポンス（ご自身の環境でエンドポイントを呼び出して最新情報を確認してください）：
@@ -136,6 +147,7 @@ Responses API 互換は最小実装済み（非ストリーム/ストリーム�
   - サーバープロセスから書き込み可能なパスでなければ、`Failed to create CODEX_WORKDIR ... Read-only file system` エラーになります。
   - この階層（およびサブディレクトリ）に置いた `AGENTS.md` は Codex が連結するため、`docs/examples/AGENTS.example.md` をコピーしてラッパー専用の指示を記載できます。
 - CODEX_CONFIG_DIR: ラッパー専用の Codex 設定ディレクトリ（任意）。設定するとサーバーが存在確認と作成を行い、Codex CLI をこのディレクトリを `CODEX_HOME` として実行します。`config.toml` や MCP 設定、専用の `auth.json` を分離したい場合に利用します。
+- CODEX_WRAPPER_PROFILE_DIR: `codex_agents.md` / `codex_config.toml` の上書き用ディレクトリ（任意）。指定した場合、サーバー起動時に存在するファイルのみを Codex のホーム (`AGENTS.md` / `config.toml`) へコピーします。既定値はリポジトリ内の `workspace/codex_profile/` で、コミット対象はサンプル (`codex_agents.sample.md`, `codex_config.sample.toml`) のみです。旧名称（`agent.md`, `config.toml`）も当面は読み込み対象ですが、起動時に警告が出力されるため早めの移行を推奨します。
 - CODEX_MODEL: **廃止**。モデル選択は自動化されており、この変数を設定しても無視され（起動時に警告が出力されます）。
 - CODEX_SANDBOX_MODE: サンドボックスモード。`read-only` / `workspace-write` / `danger-full-access` のいずれか。
   - `workspace-write` の場合、API リクエストで `x_codex.network_access` が指定されると `--config sandbox_workspace_write='{ network_access = <true|false> }'` を付与します。

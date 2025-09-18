@@ -2,9 +2,9 @@ import asyncio
 import json
 import logging
 import os
-import re
 import shutil
 import tempfile
+from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 
 try:
@@ -20,6 +20,14 @@ class CodexError(Exception):
 
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_PROFILE_DIR = (
+    Path(__file__).resolve().parent.parent / "workspace" / "codex_profile"
+)
+_PROFILE_FILES = (
+    ("AGENTS.md", "codex_agents.md", ("agent.md",)),
+    ("config.toml", "codex_config.toml", ("config.toml",)),
+)
 
 
 def _resolve_codex_executable() -> str:
@@ -50,6 +58,72 @@ def _ensure_workdir_exists() -> None:
         raise CodexError(
             f"Failed to create CODEX_WORKDIR '{settings.codex_workdir}': {e}"
         )
+
+
+def _resolve_codex_home_dir() -> Path:
+    """Return the directory Codex CLI uses as its home, ensuring it exists."""
+
+    if settings.codex_config_dir:
+        target = Path(settings.codex_config_dir).expanduser()
+    else:
+        env_home = os.environ.get("CODEX_HOME")
+        if env_home:
+            target = Path(env_home).expanduser()
+        else:
+            target = Path.home() / ".codex"
+
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        raise CodexError(f"Failed to prepare Codex home directory '{target}': {exc}")
+    return target
+
+
+def apply_codex_profile_overrides() -> None:
+    """Copy opt-in profile files into the Codex home directory before startup."""
+
+    configured_dir = settings.codex_profile_dir
+    source_dir = (
+        Path(configured_dir).expanduser()
+        if configured_dir
+        else _DEFAULT_PROFILE_DIR
+    )
+    if not source_dir.is_dir():
+        return
+
+    pending: list[tuple[Path, str, Optional[str], str]] = []
+    for dest_name, primary_name, legacy_names in _PROFILE_FILES:
+        selected_path: Optional[Path] = None
+        legacy_match: Optional[str] = None
+        for candidate in (primary_name, *legacy_names):
+            candidate_path = source_dir / candidate
+            if candidate_path.is_file():
+                selected_path = candidate_path
+                if candidate != primary_name:
+                    legacy_match = candidate
+                break
+        if selected_path:
+            pending.append((selected_path, dest_name, legacy_match, primary_name))
+
+    if not pending:
+        return
+
+    codex_home = _resolve_codex_home_dir()
+    for src_path, dest_name, legacy_name, primary_name in pending:
+        dest_path = codex_home / dest_name
+        try:
+            shutil.copyfile(src_path, dest_path)
+        except Exception as exc:
+            raise CodexError(
+                f"Failed to copy '{src_path}' to '{dest_path}': {exc}"
+            ) from exc
+        if legacy_name:
+            logger.warning(
+                "Codex profile override using legacy filename '%s'; rename to '%s' for future compatibility.",
+                legacy_name,
+                primary_name,
+            )
+        logger.info("Applied Codex profile override: %s -> %s", src_path, dest_path)
 
 
 def _build_codex_env() -> Dict[str, str]:
@@ -391,10 +465,7 @@ async def run_codex(
     images: Optional[List[str]] = None,
     model: Optional[str] = None,
 ) -> AsyncIterator[str]:
-    """Run codex CLI as async generator yielding filtered stdout lines suitable for SSE.
-
-    Filters human-oriented headers and MCP warnings so only assistant text remains.
-    """
+    """Run codex CLI as async generator yielding stdout lines suitable for SSE."""
     cmd = _build_cmd_and_env(prompt, overrides, images, model)
     codex_env = _build_codex_env()
     try:
@@ -417,31 +488,11 @@ async def run_codex(
         raise CodexError(f"Unable to start codex process: {e}")
 
     try:
-        # Stateful filtering: suppress the CLI prompt echo that follows "User instructions:" lines
-        suppress_instructions_block = False
         while True:
             line = await proc.stdout.readline()
             if not line:
                 break
-            raw = line.decode()
-
-            # Drop the echoed prompt lines the CLI prints under "User instructions:".
-            if suppress_instructions_block:
-                # A new timestamped line indicates the CLI has moved on to real events.
-                if _TIMESTAMP_PREFIX.match(raw):
-                    suppress_instructions_block = False
-                else:
-                    continue
-
-            # Detect the start of the instructions block (prompt echo) and skip it entirely.
-            chk = _TIMESTAMP_PREFIX.sub("", raw).strip()
-            if chk.startswith("User instructions:"):
-                suppress_instructions_block = True
-                continue
-
-            cleaned = filter_codex_stdout_line(raw)
-            if cleaned:
-                yield cleaned
+            yield line.decode(errors="ignore")
         await asyncio.wait_for(proc.wait(), timeout=settings.timeout_seconds)
         if proc.returncode != 0:
             err = (await proc.stderr.read()).decode().strip()
@@ -454,83 +505,6 @@ async def run_codex(
             proc.kill()
             await proc.wait()
 
-
-_TIMESTAMP_PREFIX = re.compile(r"^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[^\]]+\]\s*")
-# Loose timestamp-only line, e.g. "2025/09/15 06:53:40" or "2025-09-15 06:53:40"
-_LOOSE_TIMESTAMP_LINE = re.compile(r"^\s*\d{4}[-\/]\d{2}[-\/]\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s*$")
-
-_DROP_PREFIXES = (
-    "OpenAI Codex v",
-    "workdir:",
-    "model:",
-    "provider:",
-    "approval:",
-    "sandbox:",
-    "reasoning effort:",
-    "reasoning summaries:",
-    "User instructions:",
-    "tokens used:",
-)
-
-def filter_codex_stdout_line(line: str) -> Optional[str]:
-    """Filter human-oriented Codex CLI lines, returning cleaned text (with original newlines).
-
-    Preserves assistant-authored whitespace while removing timestamps, headers, and prompt echoes.
-    """
-    if not line:
-        return None
-
-    # Normalize newline handling but keep track so we can restore it.
-    newline = ""
-    if line.endswith("\r\n"):
-        newline = "\n"
-        body = line[:-2]
-    elif line.endswith("\n"):
-        newline = "\n"
-        body = line[:-1]
-    else:
-        body = line
-
-    stripped_for_check = body.strip()
-    if _LOOSE_TIMESTAMP_LINE.match(stripped_for_check):
-        return None
-
-    s = _TIMESTAMP_PREFIX.sub("", body)
-    compare = s.lstrip()
-    lower_compare = compare.lower()
-
-    if compare.startswith("--------"):
-        return None
-    if compare.startswith("ERROR: MCP client for ") or "mcp client for" in lower_compare:
-        return None
-    for p in _DROP_PREFIXES:
-        if compare.startswith(p):
-            return None
-
-    if compare.startswith("User:"):
-        return None
-
-    if compare.startswith("Assistant:"):
-        lead_len = len(s) - len(compare)
-        s = s[lead_len + len("Assistant:") :]
-        s = s.lstrip()
-        if not s:
-            return None
-        compare = s.lstrip()
-        lower_compare = compare.lower()
-
-    if lower_compare.startswith("codex"):
-        lead_len = len(s) - len(compare)
-        s = s[lead_len:]
-        lower = s.lower()
-        if lower.startswith("codex"):
-            s = s[len("codex") :]
-            s = s.lstrip(" :\t-")
-
-    if not s:
-        return newline or None
-
-    return f"{s}{newline}" if newline else s
 
 
 async def run_codex_last_message(
