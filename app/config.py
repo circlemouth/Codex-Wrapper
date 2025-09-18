@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     local_only: bool = Field(default=False, alias="CODEX_LOCAL_ONLY")
     timeout_seconds: int = Field(default=120, alias="CODEX_TIMEOUT")
     rate_limit_per_minute: int = Field(default=60, alias="RATE_LIMIT_PER_MINUTE")
-    hide_reasoning: bool = Field(default=False, alias="CODEX_HIDE_REASONING")
     # Allow server to honor x_codex.sandbox == "danger-full-access" requests.
     # When false, such requests are blocked if received (unless CODEX_LOCAL_ONLY is also false
     # in older behavior). Prefer enabling this explicitly for safety.

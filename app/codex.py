@@ -78,7 +78,6 @@ def _build_cmd_and_env(
     cfg = {
         "sandbox_mode": settings.sandbox_mode,
         "model_reasoning_effort": settings.reasoning_effort,
-        "hide_agent_reasoning": settings.hide_reasoning,
     }
     # Map API overrides (x_codex) to Codex config keys
     if overrides:
@@ -90,10 +89,6 @@ def _build_cmd_and_env(
                 mapped["sandbox_mode"] = v
             elif k == "reasoning_effort":
                 mapped["model_reasoning_effort"] = v
-            elif k == "hide_reasoning":
-                mapped["hide_agent_reasoning"] = bool(v)
-            elif k == "expose_reasoning":
-                mapped["hide_agent_reasoning"] = not bool(v)
             else:
                 mapped[k] = v
         cfg.update(mapped)
