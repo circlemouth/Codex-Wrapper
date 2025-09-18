@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 import tempfile
-from typing import AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 try:
     import tomllib
@@ -411,6 +411,7 @@ async def run_codex(
     try:
         # Stateful filtering: suppress the CLI prompt echo that follows "User instructions:" lines
         suppress_instructions_block = False
+        reasoning_filter = ReasoningStreamFilter(settings.expose_reasoning)
         while True:
             line = await proc.stdout.readline()
             if not line:
@@ -433,7 +434,9 @@ async def run_codex(
 
             cleaned = filter_codex_stdout_line(raw)
             if cleaned:
-                yield cleaned
+                processed = reasoning_filter.process(cleaned)
+                if processed:
+                    yield processed
         await asyncio.wait_for(proc.wait(), timeout=settings.timeout_seconds)
         if proc.returncode != 0:
             err = (await proc.stderr.read()).decode().strip()
@@ -463,6 +466,20 @@ _DROP_PREFIXES = (
     "User instructions:",
     "tokens used:",
 )
+
+_REASONING_HINT_TOKENS = (
+    "reason",
+    "think",
+    "analysis",
+    "chain_of_thought",
+    "chain-of-thought",
+    "cot",
+    "deliberat",
+    "思考",
+    "推論",
+)
+
+_THINK_BLOCK_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 def filter_codex_stdout_line(line: str) -> Optional[str]:
     """Filter human-oriented Codex CLI lines, returning cleaned text (with original newlines).
@@ -525,6 +542,163 @@ def filter_codex_stdout_line(line: str) -> Optional[str]:
     return f"{s}{newline}" if newline else s
 
 
+def _is_reasoning_token(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    lower = value.lower()
+    return any(token in lower for token in _REASONING_HINT_TOKENS)
+
+
+def _context_has_reasoning(context: List[str]) -> bool:
+    return any(_is_reasoning_token(entry) for entry in context)
+
+
+def _collect_text_nodes(
+    node: Any,
+    include_reasoning: bool,
+    parts: List[str],
+    context: Optional[List[str]] = None,
+    parent_key: Optional[str] = None,
+) -> None:
+    if context is None:
+        context = []
+
+    if isinstance(node, dict):
+        added: List[str] = []
+        for key in ("type", "role", "name", "channel", "purpose", "mode"):
+            value = node.get(key)
+            if isinstance(value, str):
+                lower = value.lower()
+                context.append(lower)
+                added.append(lower)
+        try:
+            for key, value in node.items():
+                key_lower = key.lower() if isinstance(key, str) else None
+                if key_lower in {"text", "content"} and isinstance(value, str):
+                    if include_reasoning or (
+                        not _context_has_reasoning(context)
+                        and not _is_reasoning_token(key_lower)
+                        and not _is_reasoning_token(parent_key)
+                    ):
+                        parts.append(value)
+                elif isinstance(value, (dict, list)):
+                    _collect_text_nodes(value, include_reasoning, parts, context, key_lower)
+        finally:
+            for _ in added:
+                context.pop()
+    elif isinstance(node, list):
+        for item in node:
+            if isinstance(item, str):
+                if include_reasoning or (
+                    not _context_has_reasoning(context or [])
+                    and not _is_reasoning_token(parent_key)
+                ):
+                    parts.append(item)
+            else:
+                _collect_text_nodes(item, include_reasoning, parts, context, parent_key)
+
+
+def _extract_text_from_json_payload(payload: str, include_reasoning: bool) -> Optional[str]:
+    stripped = payload.strip()
+    if not stripped:
+        return ""
+    if stripped[0] not in "[{":
+        return None
+    try:
+        data = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+
+    parts: List[str] = []
+    _collect_text_nodes(data, include_reasoning, parts)
+    return "".join(parts)
+
+
+class ReasoningStreamFilter:
+    """Stateful filter that can strip Codex reasoning output during streaming."""
+
+    def __init__(self, include_reasoning: bool) -> None:
+        self.include_reasoning = include_reasoning
+        self._inside_think_block = False
+
+    def process(self, text: str) -> Optional[str]:
+        if self.include_reasoning or not text:
+            return text
+
+        newline = ""
+        body = text
+        if body.endswith("\n"):
+            newline = "\n"
+            body = body[:-1]
+
+        body = self._remove_think_blocks(body)
+
+        extracted = _extract_text_from_json_payload(body, include_reasoning=False)
+        if extracted is not None:
+            body = extracted
+
+        if body == "":
+            return None
+        if not body.strip():
+            if "\n" in body or newline:
+                return (body + newline) if newline else body
+            return None
+
+        return body + newline if newline else body
+
+    def _remove_think_blocks(self, text: str) -> str:
+        if not text:
+            return text
+
+        result: List[str] = []
+        idx = 0
+        lower = text.lower()
+        length = len(text)
+
+        while idx < length:
+            if self._inside_think_block:
+                end = lower.find("</think>", idx)
+                if end == -1:
+                    return "".join(result)
+                idx = end + len("</think>")
+                self._inside_think_block = False
+                continue
+
+            start = lower.find("<think>", idx)
+            end = lower.find("</think>", idx)
+
+            if start != -1 and (end == -1 or start < end):
+                if start > idx:
+                    result.append(text[idx:start])
+                idx = start + len("<think>")
+                self._inside_think_block = True
+                continue
+
+            if end != -1:
+                if end > idx:
+                    result.append(text[idx:end])
+                idx = end + len("</think>")
+                self._inside_think_block = False
+                continue
+
+            result.append(text[idx:])
+            break
+
+        return "".join(result)
+
+
+def strip_reasoning_text(text: str, include_reasoning: bool) -> str:
+    if include_reasoning or not text:
+        return text
+
+    cleaned = _THINK_BLOCK_PATTERN.sub("", text)
+    extracted = _extract_text_from_json_payload(cleaned, include_reasoning=False)
+    if extracted is not None:
+        cleaned = extracted
+
+    return cleaned.strip()
+
+
 async def run_codex_last_message(
     prompt: str,
     overrides: Optional[Dict] = None,
@@ -559,9 +733,14 @@ async def run_codex_last_message(
                 text = f.read()
         except Exception:
             text = ""
-        if text == "":
+
+        if not text:
             # Fallback to any stdout text when the file is empty or missing.
             text = (stdout_data or b"").decode(errors="ignore")
+
+        if not settings.expose_reasoning:
+            text = strip_reasoning_text(text, include_reasoning=False)
+
         return text
     except asyncio.TimeoutError:
         raise CodexError("codex execution timed out")

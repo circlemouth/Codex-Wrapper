@@ -137,6 +137,7 @@ This server reads `.env` and uses the following variables. Example values and co
 - CODEX_SANDBOX_MODE: Sandbox mode. One of: `read-only` | `workspace-write` | `danger-full-access`.
   - For `workspace-write`, the wrapper adds `--config sandbox_workspace_write='{ network_access = <true|false> }'` when the API request specifies `x_codex.network_access`.
 - CODEX_REASONING_EFFORT: Reasoning effort. One of: `minimal` | `low` | `medium` | `high` (default `medium`).
+- CODEX_EXPOSE_REASONING: `true`/`false`. Default `true` to match prior behavior. Set to `false` to remove Codex reasoning/thinking output (e.g., `<think>` blocks) from API responses.
 - CODEX_LOCAL_ONLY: `0`/`1`. Default `0` (recommended).
   - If `1`, any non‑local model provider `base_url` (not localhost/127.0.0.1/[::1]/unix) is rejected with 400.
   - The server checks `$CODEX_HOME/config.toml` `model_providers` and the built‑in `openai` provider’s `OPENAI_BASE_URL`. Unknown/missing settings are rejected conservatively.

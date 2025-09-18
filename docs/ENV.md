@@ -19,6 +19,7 @@ This project loads configuration via environment variables. It supports a `.env`
   - API 専用の `config.toml` や MCP 設定を分離したい場合に利用します（CLI を直接使う環境と分けられます）。
 - `CODEX_SANDBOX_MODE`: `read-only` | `workspace-write` | `danger-full-access`.
 - `CODEX_REASONING_EFFORT`: `minimal` | `low` | `medium` | `high`.
+- `CODEX_EXPOSE_REASONING`: `0`/`1`. When `0`, the API strips Codex `<think>`/reasoning segments before returning responses. Default `1` (legacy behavior: include thinking text).
 - `CODEX_LOCAL_ONLY`: `0`/`1`. When `1`, the server rejects non‑local provider base URLs.
 - `CODEX_ALLOW_DANGER_FULL_ACCESS`: `0`/`1`. When `1`, the API may request `x_codex.sandbox=danger-full-access`.
 - `CODEX_TIMEOUT`: Server‑side timeout for Codex runs (seconds; default 120).
