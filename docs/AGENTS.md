@@ -295,3 +295,18 @@ cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 - For OpenAI in API‑key mode set `OPENAI_API_KEY` (OAuth mode does not need it).
 - Enable web search via `tools.web_search = true` in `config.toml`.
 - Define MCP servers under `mcp_servers.<id>` (stdio).
+- API 専用の設定を分離したい場合は `.env` に `CODEX_CONFIG_DIR` を設定します。Codex ランタイムはこの値を `CODEX_HOME` として扱い、`config.toml` や MCP 定義をラッパー専用にできます。
+
+## AGENTS templates
+
+- Example: copy `docs/examples/AGENTS.example.md` to the desired location for Codex (global or repository).
+
+```bash
+# Global defaults
+cp docs/examples/AGENTS.example.md ~/.codex/AGENTS.md
+
+# Repository-specific guidance
+cp docs/examples/AGENTS.example.md AGENTS.md
+```
+
+Update the copied file with your project-specific notes. Codex reads AGENTS.md files at the root of the working directory tree when executing requests from this API.

@@ -1,5 +1,8 @@
 # Repository Guidelines
 
+## Language
+- 以降、このリポジトリでのアシスタントからの返答は日本語で行うこと。
+
 ## Project Structure & Module Organization
 - `app/` holds the FastAPI service: `main.py` exposes `/v1/chat/completions` and `/v1/responses`, `codex.py` shells out to the Codex CLI, and sibling modules handle config, schemas, and security gates.
 - `docs/` contains bilingual product docs plus English-only references such as `ENV.md` and API plans; keep translations in sync per `CONTRIBUTING.md`.

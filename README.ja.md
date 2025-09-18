@@ -66,6 +66,18 @@ cp docs/examples/codex-config.example.toml ~/.codex/config.toml
 
 OpenAI の gpt-5 モデルを使うには、（APIキー運用時は）Codex CLI 側で該当プロバイダーの資格情報を設定してください。このラッパーは起動時に `codex models list` を実行して利用可能なモデル名を自動検出します。利用可能なモデル名は `GET /v1/models` で確認できます。OAuth運用時は `OPENAI_API_KEY` は必須ではありません。
 
+4b) Codex 用ガイダンス（任意）
+
+```bash
+# リポジトリ全体向けの AGENTS テンプレートをコピー
+cp docs/examples/AGENTS.example.md AGENTS.md
+
+# CODEX_WORKDIR 配下でラッパー専用の指示を定義
+cp docs/examples/AGENTS.example.md "$CODEX_WORKDIR/AGENTS.md"
+```
+
+`CODEX_WORKDIR`（既定 `/workspace`）を設定すると、ラッパーはそのディレクトリ階層に存在する `AGENTS.md` を Codex へ連結します。プロジェクト固有の運用ルールを共有したいときに活用してください。
+
 5) 環境変数の設定（.env 対応）
 
 このリポジトリは `.env` から環境変数を自動で読み込みます（`pydantic-settings`）。詳細は `docs/ENV.md` を参照してください（英語）。
@@ -110,7 +122,9 @@ Responses API 互換は最小実装済み（非ストリーム/ストリーム�
 - RATE_LIMIT_PER_MINUTE: 1 分あたりのリクエスト許容量。0 を指定するとレート制限を無効化します。
 - CODEX_PATH: `codex` バイナリのパス。既定値は `codex`。
 - CODEX_WORKDIR: Codex 実行時の作業ディレクトリ (`cwd`)。既定値は `/workspace`。
-  - サーバープロセスから書き込み可能なパスを指定してください。読み取り専用パスの場合は `Failed to create CODEX_WORKDIR ... Read-only file system` エラーになります。
+  - サーバープロセスから書き込み可能なパスでなければ、`Failed to create CODEX_WORKDIR ... Read-only file system` エラーになります。
+  - この階層（およびサブディレクトリ）に置いた `AGENTS.md` は Codex が連結するため、`docs/examples/AGENTS.example.md` をコピーしてラッパー専用の指示を記載できます。
+- CODEX_CONFIG_DIR: ラッパー専用の Codex 設定ディレクトリ（任意）。設定するとサーバーが存在確認と作成を行い、Codex CLI をこのディレクトリを `CODEX_HOME` として実行します。`config.toml` や MCP 設定、専用の `auth.json` を分離したい場合に利用します。
 - CODEX_MODEL: **廃止**。モデル選択は自動化されており、この変数を設定しても無視され（起動時に警告が出力されます）。
 - CODEX_SANDBOX_MODE: サンドボックスモード。`read-only` / `workspace-write` / `danger-full-access` のいずれか。
   - `workspace-write` の場合、API リクエストで `x_codex.network_access` が指定されると `--config sandbox_workspace_write='{ network_access = <true|false> }'` を付与します。

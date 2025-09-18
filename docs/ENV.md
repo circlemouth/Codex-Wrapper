@@ -14,6 +14,9 @@ This project loads configuration via environment variables. It supports a `.env`
 - `RATE_LIMIT_PER_MINUTE`: Requests per minute allowed per client. `0` disables limiting.
 - `CODEX_PATH`: Path to `codex` binary (default: `codex`).
 - `CODEX_WORKDIR`: Working directory for Codex runs (server enforces `cwd` to this path).
+  - Codex はこのディレクトリ階層で `AGENTS.md` を探索します。ラッパー API 特有の指示を適用したい場合は、ここ（または配下のサブディレクトリ）に `AGENTS.md` を配置してください。
+- `CODEX_CONFIG_DIR`: Optional directory to use as the Codex CLI home for this wrapper. When set, the server exports `CODEX_HOME` for subprocesses and guarantees the folder exists. Place your API-specific `config.toml` here.
+  - API 専用の `config.toml` や MCP 設定を分離したい場合に利用します（CLI を直接使う環境と分けられます）。
 - `CODEX_SANDBOX_MODE`: `read-only` | `workspace-write` | `danger-full-access`.
 - `CODEX_REASONING_EFFORT`: `minimal` | `low` | `medium` | `high`.
 - `CODEX_LOCAL_ONLY`: `0`/`1`. When `1`, the server rejects non‑local provider base URLs.

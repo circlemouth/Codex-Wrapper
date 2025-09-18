@@ -52,6 +52,22 @@ def _ensure_workdir_exists() -> None:
         )
 
 
+def _build_codex_env() -> Dict[str, str]:
+    """Prepare environment variables for Codex subprocesses."""
+
+    env = os.environ.copy()
+    config_dir = settings.codex_config_dir
+    if config_dir:
+        try:
+            os.makedirs(config_dir, exist_ok=True)
+        except Exception as exc:
+            raise CodexError(
+                f"Failed to prepare CODEX_CONFIG_DIR '{config_dir}': {exc}"
+            )
+        env["CODEX_HOME"] = config_dir
+    return env
+
+
 def _build_cmd_and_env(
     prompt: str,
     overrides: Optional[Dict] = None,
@@ -116,6 +132,7 @@ async def list_codex_models() -> List[str]:
 
     exe = _resolve_codex_executable()
     _ensure_workdir_exists()
+    codex_env = _build_codex_env()
 
     attempts = [
         [exe, "models", "list", "--json"],
@@ -132,6 +149,7 @@ async def list_codex_models() -> List[str]:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.codex_workdir,
+                env=codex_env,
             )
         except FileNotFoundError as e:
             raise CodexError(
@@ -250,6 +268,8 @@ def _parse_model_listing(raw: str) -> List[str]:
 async def _probe_models_via_proto(exe: str) -> List[str]:
     """Use `codex proto` to discover the current default model."""
 
+    codex_env = _build_codex_env()
+
     try:
         proc = await asyncio.create_subprocess_exec(
             exe,
@@ -258,6 +278,7 @@ async def _probe_models_via_proto(exe: str) -> List[str]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=settings.codex_workdir,
+            env=codex_env,
         )
     except FileNotFoundError as exc:
         raise CodexError(f"Failed to launch codex proto: {exc}")
@@ -316,7 +337,11 @@ def _dedupe_preserving_order(values: List[str]) -> List[str]:
 def _models_from_config() -> List[str]:
     """Extract model names from ~/.codex/config.toml as a fallback."""
 
-    codex_home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    codex_home = (
+        settings.codex_config_dir
+        or os.environ.get("CODEX_HOME")
+        or os.path.expanduser("~/.codex")
+    )
     config_path = os.path.join(codex_home, "config.toml")
     if not os.path.isfile(config_path):
         return []
@@ -357,12 +382,14 @@ async def run_codex(
     Filters human-oriented headers and MCP warnings so only assistant text remains.
     """
     cmd = _build_cmd_and_env(prompt, overrides, images, model)
+    codex_env = _build_codex_env()
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=settings.codex_workdir,
+            env=codex_env,
         )
     except FileNotFoundError as e:
         raise CodexError(
@@ -505,6 +532,7 @@ async def run_codex_last_message(
     cmd = _build_cmd_and_env(prompt, overrides, images, model)
     # Create temp file in workdir to ensure permissions
     _ensure_workdir_exists()
+    codex_env = _build_codex_env()
     with tempfile.NamedTemporaryFile(prefix="codex-last-", suffix=".txt", dir=settings.codex_workdir, delete=False) as tf:
         out_path = tf.name
     cmd = cmd + ["--json", "--output-last-message", out_path]
@@ -514,6 +542,7 @@ async def run_codex_last_message(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=settings.codex_workdir,
+            env=codex_env,
         )
         stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=settings.timeout_seconds)
         if proc.returncode != 0:

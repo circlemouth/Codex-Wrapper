@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     proxy_api_key: Optional[str] = Field(default=None, alias="PROXY_API_KEY")
     codex_workdir: str = Field(default="/workspace", alias="CODEX_WORKDIR")
+    codex_config_dir: Optional[str] = Field(default=None, alias="CODEX_CONFIG_DIR")
     codex_path: str = Field(default="codex", alias="CODEX_PATH")
     sandbox_mode: str = Field(default="read-only", alias="CODEX_SANDBOX_MODE")
     reasoning_effort: str = Field(default="medium", alias="CODEX_REASONING_EFFORT")
