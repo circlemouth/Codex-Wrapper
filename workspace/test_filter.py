@@ -1,4 +1,9 @@
-from app.codex import filter_codex_stdout_line
+"""Manual harness retained for historical comparison.
+
+Filtering logic was removed from the wrapper; the samples below now pass
+through unchanged. Run this script to sanity-check how Codex CLI lines are
+delivered when debugging streaming output.
+"""
 
 samples = [
     "2025/09/15 06:53:40",
@@ -11,4 +16,4 @@ samples = [
 ]
 
 for s in samples:
-    print(s, '=>', repr(filter_codex_stdout_line(s)))
+    print(s, "=>", repr(s))

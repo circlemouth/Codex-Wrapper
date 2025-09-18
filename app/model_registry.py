@@ -4,7 +4,7 @@ import logging
 import os
 from typing import List, Optional, Tuple
 
-from .codex import CodexError, list_codex_models
+from .codex import CodexError, apply_codex_profile_overrides, list_codex_models
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ async def initialize_model_registry() -> List[str]:
     global _AVAILABLE_MODELS, _LAST_ERROR
 
     _warn_if_legacy_env_present()
+    apply_codex_profile_overrides()
 
     try:
         models = await list_codex_models()

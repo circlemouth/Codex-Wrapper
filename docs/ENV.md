@@ -17,6 +17,8 @@ This project loads configuration via environment variables. It supports a `.env`
   - Codex はこのディレクトリ階層で `AGENTS.md` を探索します。ラッパー API 特有の指示を適用したい場合は、ここ（または配下のサブディレクトリ）に `AGENTS.md` を配置してください。
 - `CODEX_CONFIG_DIR`: Optional directory to use as the Codex CLI home for this wrapper. When set, the server exports `CODEX_HOME` for subprocesses and guarantees the folder exists. Place your API-specific `config.toml` here.
   - API 専用の `config.toml` や MCP 設定を分離したい場合に利用します（CLI を直接使う環境と分けられます）。
+- `CODEX_WRAPPER_PROFILE_DIR`: Optional path containing `codex_agents.md` / `codex_config.toml` overrides. Defaults to `workspace/codex_profile/` inside the repository. When these files are present the server copies them into the Codex home before startup (legacy filenames `agent.md` / `config.toml` are still accepted with a warning to aid migration).
+  - `codex_agents.sample.md` / `codex_config.sample.toml` をコピーして `codex_agents.md` / `codex_config.toml` を用意すると、サーバー起動時に Codex 側のファイルが上書きされます。旧名称を使っている場合は警告を参考にリネームしてください。
 - `CODEX_SANDBOX_MODE`: `read-only` | `workspace-write` | `danger-full-access`.
 - `CODEX_REASONING_EFFORT`: `minimal` | `low` | `medium` | `high`.
 - `CODEX_HIDE_REASONING`: `0`/`1`. When `1`, the wrapper asks Codex CLI to suppress "thinking" output (`hide_agent_reasoning=true`). Default `0` keeps the CLI’s standard behaviour.
