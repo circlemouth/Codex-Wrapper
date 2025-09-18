@@ -111,6 +111,17 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 ```
 
 詳細は `docs/IMPLEMENTATION_PLAN.ja.md` と `docs/AGENTS.md`（英語）を参照してください。
+
+### `/v1/models` で取得できるモデル一覧
+
+2025-09-18 時点でのサンプルレスポンス（ご自身の環境でエンドポイントを呼び出して最新情報を確認してください）：
+
+- `gpt-5`
+- `gpt-5-codex`
+
+これらの ID には末尾に ` minimal` / ` low` / ` medium` / ` high` を付けることで推論モード（reasoning effort）を上書きできます（例: `gpt-5-codex high`）。
+
+
 Responses API 互換は最小実装済み（非ストリーム/ストリーム）。詳細と今後の拡張は `docs/RESPONSES_API_PLAN.ja.md` を参照。
 
 ## 環境変数

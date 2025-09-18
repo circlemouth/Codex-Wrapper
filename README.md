@@ -108,7 +108,18 @@ from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY")
 ```
 
-See `docs/IMPLEMENTATION_PLAN.ja.md` (Japanese) and `docs/AGENTS.md` for details. Minimal Responses API compatibility (non‑stream/stream) is implemented; see `docs/RESPONSES_API_PLAN.ja.md` (Japanese) for details and future work.
+See `docs/IMPLEMENTATION_PLAN.ja.md` (Japanese) and `docs/AGENTS.md` for details.
+
+### Models exposed by `/v1/models`
+
+Sample response on 2025-09-18 (call the endpoint in your environment to confirm):
+
+- `gpt-5`
+- `gpt-5-codex`
+
+You can append ` minimal` / ` low` / ` medium` / ` high` to any of the above IDs to override reasoning effort inline (for example: `gpt-5-codex high`).
+
+ Minimal Responses API compatibility (non‑stream/stream) is implemented; see `docs/RESPONSES_API_PLAN.ja.md` (Japanese) for details and future work.
 
 ## Environment Variables (Authoritative)
 

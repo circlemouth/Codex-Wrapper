@@ -117,11 +117,17 @@ def _build_cmd_and_env(
     if model:
         cmd += ["--config", f"model=\"{model}\""]
 
-    if overrides and overrides.get("sandbox") == "workspace-write":
-        network = overrides.get("network_access")
-        if network is not None:
-            # Pass inline TOML table without extra quotes
-            toml_bool = "true" if bool(network) else "false"
+    override_network = overrides.get("network_access") if overrides else None
+
+    effective_sandbox = cfg.get("sandbox_mode", settings.sandbox_mode)
+    if effective_sandbox == "workspace-write":
+        allow_network = (
+            bool(override_network)
+            if override_network is not None
+            else settings.workspace_network_access
+        )
+        if override_network is not None or settings.workspace_network_access:
+            toml_bool = "true" if allow_network else "false"
             cmd += ["--config", f"sandbox_workspace_write={{ network_access = {toml_bool} }}"]
 
     return cmd

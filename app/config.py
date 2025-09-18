@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     codex_config_dir: Optional[str] = Field(default=None, alias="CODEX_CONFIG_DIR")
     codex_path: str = Field(default="codex", alias="CODEX_PATH")
     sandbox_mode: str = Field(default="read-only", alias="CODEX_SANDBOX_MODE")
+    workspace_network_access: bool = Field(
+        default=False, alias="CODEX_WORKSPACE_NETWORK_ACCESS"
+    )
     reasoning_effort: str = Field(default="medium", alias="CODEX_REASONING_EFFORT")
     local_only: bool = Field(default=False, alias="CODEX_LOCAL_ONLY")
     timeout_seconds: int = Field(default=120, alias="CODEX_TIMEOUT")
