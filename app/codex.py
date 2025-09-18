@@ -22,6 +22,41 @@ class CodexError(Exception):
 logger = logging.getLogger(__name__)
 
 
+class _ReasoningSuppressor:
+    """Track whether Codex human-oriented output is currently streaming reasoning text."""
+
+    def __init__(self, expose_reasoning: bool):
+        self._expose_reasoning = expose_reasoning
+        self._suppress = False
+
+    def should_skip(self, raw_line: str) -> bool:
+        """Return True when the given stdout line belongs to a reasoning block we should hide."""
+
+        if self._expose_reasoning:
+            return False
+
+        normalized = _TIMESTAMP_PREFIX.sub("", raw_line)
+        stripped = normalized.strip()
+        has_timestamp = bool(_TIMESTAMP_PREFIX.match(raw_line))
+        lowered = stripped.lower()
+
+        if has_timestamp and lowered.startswith("thinking"):
+            self._suppress = True
+            return True
+
+        if self._suppress:
+            if has_timestamp and lowered.startswith("codex"):
+                self._suppress = False
+                return True
+            if not stripped:
+                return True
+            if not has_timestamp:
+                return True
+            return True
+
+        return False
+
+
 def _resolve_codex_executable() -> str:
     """Return the resolved Codex CLI executable path or raise CodexError."""
 
@@ -92,13 +127,6 @@ def _build_cmd_and_env(
             else:
                 mapped[k] = v
         cfg.update(mapped)
-
-    if (
-        not settings.expose_reasoning
-        and "hide_agent_reasoning" not in cfg
-        and not cfg.get("show_raw_agent_reasoning")
-    ):
-        cfg["hide_agent_reasoning"] = True
 
     # Resolve codex executable
     exe = _resolve_codex_executable()
@@ -421,6 +449,7 @@ async def run_codex(
     try:
         # Stateful filtering: suppress the CLI prompt echo that follows "User instructions:" lines
         suppress_instructions_block = False
+        reasoning_filter = _ReasoningSuppressor(settings.expose_reasoning)
         while True:
             line = await proc.stdout.readline()
             if not line:
@@ -439,6 +468,9 @@ async def run_codex(
             chk = _TIMESTAMP_PREFIX.sub("", raw).strip()
             if chk.startswith("User instructions:"):
                 suppress_instructions_block = True
+                continue
+
+            if reasoning_filter.should_skip(raw):
                 continue
 
             cleaned = filter_codex_stdout_line(raw)
