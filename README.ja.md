@@ -140,6 +140,7 @@ Responses API 互換は最小実装済み（非ストリーム/ストリーム�
 - CODEX_SANDBOX_MODE: サンドボックスモード。`read-only` / `workspace-write` / `danger-full-access` のいずれか。
   - `workspace-write` の場合、API リクエストで `x_codex.network_access` が指定されると `--config sandbox_workspace_write='{ network_access = <true|false> }'` を付与します。
 - CODEX_REASONING_EFFORT: 推論強度。`minimal` / `low` / `medium` / `high`（既定は `medium`）。
+- CODEX_HIDE_REASONING: `true` / `false`。既定は `false`。`true` にすると Codex CLI へ `hide_agent_reasoning` を伝え、「thinking」出力を CLI 側で抑制します。
 - CODEX_LOCAL_ONLY: `0` または `1`。既定は `0`（推奨）。
   - `1` にするとローカル以外の `base_url`（localhost/127.0.0.1/[::1]/UNIX ソケット以外）のモデルプロバイダを 400 で拒否します。
   - サーバーは `$CODEX_HOME/config.toml` の `model_providers` と組み込み `openai` プロバイダの `OPENAI_BASE_URL` を検証し、不明な設定は安全側で拒否します。
