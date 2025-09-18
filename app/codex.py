@@ -22,41 +22,6 @@ class CodexError(Exception):
 logger = logging.getLogger(__name__)
 
 
-class _ReasoningSuppressor:
-    """Track whether Codex human-oriented output is currently streaming reasoning text."""
-
-    def __init__(self, expose_reasoning: bool):
-        self._expose_reasoning = expose_reasoning
-        self._suppress = False
-
-    def should_skip(self, raw_line: str) -> bool:
-        """Return True when the given stdout line belongs to a reasoning block we should hide."""
-
-        if self._expose_reasoning:
-            return False
-
-        normalized = _TIMESTAMP_PREFIX.sub("", raw_line)
-        stripped = normalized.strip()
-        has_timestamp = bool(_TIMESTAMP_PREFIX.match(raw_line))
-        lowered = stripped.lower()
-
-        if has_timestamp and lowered.startswith("thinking"):
-            self._suppress = True
-            return True
-
-        if self._suppress:
-            if has_timestamp and lowered.startswith("codex"):
-                self._suppress = False
-                return True
-            if not stripped:
-                return True
-            if not has_timestamp:
-                return True
-            return True
-
-        return False
-
-
 def _resolve_codex_executable() -> str:
     """Return the resolved Codex CLI executable path or raise CodexError."""
 
@@ -113,6 +78,7 @@ def _build_cmd_and_env(
     cfg = {
         "sandbox_mode": settings.sandbox_mode,
         "model_reasoning_effort": settings.reasoning_effort,
+        "hide_agent_reasoning": settings.hide_reasoning,
     }
     # Map API overrides (x_codex) to Codex config keys
     if overrides:
@@ -124,6 +90,10 @@ def _build_cmd_and_env(
                 mapped["sandbox_mode"] = v
             elif k == "reasoning_effort":
                 mapped["model_reasoning_effort"] = v
+            elif k == "hide_reasoning":
+                mapped["hide_agent_reasoning"] = bool(v)
+            elif k == "expose_reasoning":
+                mapped["hide_agent_reasoning"] = not bool(v)
             else:
                 mapped[k] = v
         cfg.update(mapped)
@@ -449,7 +419,6 @@ async def run_codex(
     try:
         # Stateful filtering: suppress the CLI prompt echo that follows "User instructions:" lines
         suppress_instructions_block = False
-        reasoning_filter = _ReasoningSuppressor(settings.expose_reasoning)
         while True:
             line = await proc.stdout.readline()
             if not line:
@@ -468,9 +437,6 @@ async def run_codex(
             chk = _TIMESTAMP_PREFIX.sub("", raw).strip()
             if chk.startswith("User instructions:"):
                 suppress_instructions_block = True
-                continue
-
-            if reasoning_filter.should_skip(raw):
                 continue
 
             cleaned = filter_codex_stdout_line(raw)
