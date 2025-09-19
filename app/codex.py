@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -28,6 +29,112 @@ _PROFILE_FILES = (
     ("AGENTS.md", "codex_agents.md", ("agent.md",)),
     ("config.toml", "codex_config.toml", ("config.toml",)),
 )
+
+
+_TIMESTAMP_LINE = re.compile(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}]")
+_KNOWN_METADATA_PREFIXES = (
+    "workdir:",
+    "model:",
+    "provider:",
+    "approval:",
+    "sandbox:",
+    "reasoning effort:",
+    "reasoning summaries:",
+    "tokens used:",
+    "user instructions:",
+    "user:",
+    "searched:",
+    "searching:",
+    "retrying ",
+    "error:",
+)
+
+
+class _CodexOutputFilter:
+    """Drop CLI preamble/tool logs and surface only assistant text."""
+
+    def __init__(self) -> None:
+        self._saw_assistant = False
+        self._emitted_any = False
+        self._in_user_block = False
+
+    def process(self, raw_line: str) -> Optional[str]:
+        line = raw_line.rstrip("\r\n")
+        stripped = line.strip()
+        lowered = stripped.lower()
+
+        if lowered.startswith("user instructions:") or lowered.startswith("user:"):
+            self._in_user_block = True
+            return None
+
+        if lowered.startswith("assistant:"):
+            self._in_user_block = False
+            self._saw_assistant = True
+            return None
+
+        if not stripped:
+            if self._in_user_block:
+                return None
+            if self._emitted_any:
+                return "\n"
+            return None
+
+        if self._in_user_block:
+            if _looks_like_codex_marker(stripped):
+                self._in_user_block = False
+                return None
+            return None
+
+        if _is_metadata_line(stripped):
+            return None
+
+        if not self._saw_assistant:
+            self._saw_assistant = True
+
+
+        self._emitted_any = True
+        return f"{line}\n"
+
+
+def _is_metadata_line(text: str) -> bool:
+    if _TIMESTAMP_LINE.match(text):
+        return True
+    lower = text.lower()
+    normal = _strip_leading_symbols(lower)
+    return any(normal.startswith(prefix) for prefix in _KNOWN_METADATA_PREFIXES)
+
+
+def _strip_leading_symbols(value: str) -> str:
+    idx = 0
+    length = len(value)
+    while idx < length and not value[idx].isalnum():
+        idx += 1
+    if idx == 0:
+        return value
+    return value[idx:]
+
+
+def _looks_like_codex_marker(text: str) -> bool:
+    lowered = text.lower()
+    if lowered.startswith("assistant"):
+        return True
+    if _TIMESTAMP_LINE.match(text) and " codex" in lowered:
+        return True
+    return False
+
+
+def _sanitize_codex_text(raw: str) -> str:
+    """Filter Codex CLI output down to assistant-visible text."""
+
+    filt = _CodexOutputFilter()
+    parts: list[str] = []
+    for line in raw.splitlines():
+        processed = filt.process(f"{line}\n")
+        if processed:
+            parts.append(processed)
+
+    cleaned = "".join(parts).rstrip("\n")
+    return cleaned
 
 
 def _resolve_codex_executable() -> str:
@@ -468,6 +575,7 @@ async def run_codex(
     """Run codex CLI as async generator yielding stdout lines suitable for SSE."""
     cmd = _build_cmd_and_env(prompt, overrides, images, model)
     codex_env = _build_codex_env()
+    output_filter = _CodexOutputFilter()
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -492,7 +600,9 @@ async def run_codex(
             line = await proc.stdout.readline()
             if not line:
                 break
-            yield line.decode(errors="ignore")
+            filtered = output_filter.process(line.decode(errors="ignore"))
+            if filtered:
+                yield filtered
         await asyncio.wait_for(proc.wait(), timeout=settings.timeout_seconds)
         if proc.returncode != 0:
             err = (await proc.stderr.read()).decode().strip()
@@ -545,8 +655,10 @@ async def run_codex_last_message(
         if not text:
             # Fallback to any stdout text when the file is empty or missing.
             text = (stdout_data or b"").decode(errors="ignore")
-
-        return text
+        sanitized = _sanitize_codex_text(text)
+        if sanitized:
+            return sanitized
+        return text.strip()
     except asyncio.TimeoutError:
         raise CodexError("codex execution timed out")
     finally:
