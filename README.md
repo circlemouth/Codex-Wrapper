@@ -131,7 +131,8 @@ Sample response on 2025-09-18 (call the endpoint in your environment to confirm)
 
 You can append ` minimal` / ` low` / ` medium` / ` high` to any of the above IDs to override reasoning effort inline (for example: `gpt-5-codex high`).
 
- Minimal Responses API compatibility (non‑stream/stream) is implemented; see `docs/RESPONSES_API_PLAN.ja.md` (Japanese) for details and future work.
+Minimal Responses API compatibility (non‑stream/stream) is implemented; see `docs/RESPONSES_API_PLAN.ja.md` (Japanese) for details and future work.
+Structured output features such as `response_format`/JSON Schema are not supported because the Codex CLI only returns plain text and this wrapper normalizes those results into strings.
 
 ## Environment Variables (Authoritative)
 

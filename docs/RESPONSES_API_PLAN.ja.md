@@ -37,7 +37,7 @@
 オプション・マッピング
 - `reasoning.effort`（`minimal|low|medium|high`）→ `x_codex.reasoning_effort`
 - `stream: true/false` → SSE 出力の有無
-  - 以下は一旦未対応（受け取って無視／400 にしない）：`instructions`、`modalities`、`audio`、`tools`、`metadata`、`text.format`（Structured Output）
+- 以下は一旦未対応（受け取って無視／400 にしない）：`instructions`、`modalities`、`audio`、`tools`、`metadata`、`text.format`（Structured Output。Codex CLI が構造化オブジェクトを返さず文字列のみを出力するため伝搬経路がない）
 
 ## レスポンス構造（非ストリーム）
 
@@ -126,7 +126,7 @@ Codex の出力行の扱い
 
 ## 互換性と制約（当面）
 
-- 未対応: ツール呼び出し、画像・音声、Structured Output（`text.format`）、function/tool outputs、parallel responses。
+- 未対応: ツール呼び出し、画像・音声、Structured Output（`text.format`。Codex CLI が文字列のみを返す仕様のため非対応）、function/tool outputs、parallel responses。
 - モデル/プロバイダ:
   - 既定は OpenAI（`OPENAI_API_KEY` がある場合）。`CODEX_LOCAL_ONLY=1` の場合はローカル以外の `base_url` を拒否。
 - セキュリティ: 既存の `PROXY_API_KEY`、レート制限、サンドボックス方針に従う。
