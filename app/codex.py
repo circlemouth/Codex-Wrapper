@@ -6,7 +6,7 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, Iterable, List, Optional
 
 try:
     import tomllib
@@ -62,12 +62,18 @@ class _CodexOutputFilter:
         line = raw_line.rstrip("\r\n")
         stripped = line.strip()
         lowered = stripped.lower()
+        match = _TIMESTAMP_LINE.match(stripped)
+        if match:
+            remainder = stripped[match.end() :].strip().lower()
+            normalized = _strip_leading_symbols(remainder)
+        else:
+            normalized = _strip_leading_symbols(lowered)
 
-        if lowered.startswith("user instructions:") or lowered.startswith("user:"):
+        if normalized.startswith("user instructions:") or normalized.startswith("user:"):
             self._in_user_block = True
             return None
 
-        if lowered.startswith("assistant:"):
+        if normalized.startswith("assistant:"):
             self._in_user_block = False
             self._saw_assistant = True
             return None
@@ -432,15 +438,7 @@ def _parse_model_listing(raw: str) -> List[str]:
         if items is not None:
             parsed: List[str] = []
             for item in items:
-                if isinstance(item, str):
-                    parsed.append(item)
-                    continue
-                if isinstance(item, dict):
-                    for key in ("id", "name", "model"):
-                        value = item.get(key)
-                        if isinstance(value, str):
-                            parsed.append(value)
-                            break
+                parsed.extend(_extract_model_identifiers(item))
             return _dedupe_preserving_order(parsed)
 
     parsed_lines: List[str] = []
@@ -451,13 +449,93 @@ def _parse_model_listing(raw: str) -> List[str]:
         lower = stripped.lower()
         if lower.startswith("available models"):
             continue
-        token = stripped.split()[0]
+        parts = stripped.split()
+        if not parts:
+            continue
+        token = parts[0]
         lowered_token = token.lower()
         if lowered_token in {"model", "name", "id"}:
             continue
         parsed_lines.append(token)
+        if len(parts) > 1:
+            for variant in parts[1:]:
+                alias = _compose_codex_variant_name(token, variant)
+                if alias:
+                    parsed_lines.append(alias)
 
     return _dedupe_preserving_order(parsed_lines)
+
+
+def _extract_model_identifiers(item: Any) -> List[str]:
+    if isinstance(item, str):
+        cleaned = item.strip()
+        return [cleaned] if cleaned else []
+    if isinstance(item, dict):
+        return _extract_model_identifiers_from_dict(item)
+    return []
+
+
+def _extract_model_identifiers_from_dict(data: Dict[str, Any]) -> List[str]:
+    results: List[str] = []
+    base = _first_non_empty_string(data, ("id", "model", "name", "slug"))
+    if base:
+        results.append(base)
+
+    for key in ("deployment", "variant"):
+        results.extend(_collect_codex_aliases(base, data.get(key)))
+
+    for key in ("deployments", "variants"):
+        results.extend(_collect_codex_aliases(base, data.get(key)))
+
+    return results
+
+
+def _first_non_empty_string(data: Dict[str, Any], keys: Iterable[str]) -> Optional[str]:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                return stripped
+    return None
+
+
+def _collect_codex_aliases(base: Optional[str], raw_value: Any) -> List[str]:
+    aliases: List[str] = []
+    for variant in _iter_variant_strings(raw_value):
+        alias = _compose_codex_variant_name(base, variant)
+        if alias:
+            aliases.append(alias)
+    return aliases
+
+
+def _iter_variant_strings(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for entry in value:
+            yield from _iter_variant_strings(entry)
+    elif isinstance(value, dict):
+        for key in ("id", "name", "variant", "deployment"):
+            maybe = value.get(key)
+            if isinstance(maybe, str):
+                yield maybe
+
+
+def _compose_codex_variant_name(base: Optional[str], variant: str) -> Optional[str]:
+    if not variant:
+        return None
+    normalized_variant = re.sub(r"[^0-9a-zA-Z._-]+", "-", variant.strip().lower())
+    normalized_variant = re.sub(r"-+", "-", normalized_variant).strip("-")
+    if not normalized_variant or "codex" not in normalized_variant:
+        return None
+
+    base_name = base.strip() if isinstance(base, str) else ""
+    if base_name:
+        if base_name.lower().endswith(f"-{normalized_variant}"):
+            return None
+        return f"{base_name}-{normalized_variant}"
+    return normalized_variant
 
 
 async def _probe_models_via_proto(exe: str) -> List[str]:
