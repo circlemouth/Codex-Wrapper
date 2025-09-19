@@ -135,6 +135,7 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 
 
 Responses API 互換は最小実装済み（非ストリーム/ストリーム）。詳細と今後の拡張は `docs/RESPONSES_API_PLAN.ja.md` を参照。
+Structured output（`response_format` や JSON Schema）には Codex CLI が文字列のみを返す仕様上対応しておらず、本ラッパーでも非対応です。
 
 ## 環境変数
 
