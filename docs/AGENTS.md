@@ -270,7 +270,7 @@ git submodule update --remote submodules/codex
 ## Limitations (initial)
 
  - No tool/function calling; no audio
-- No strict token accounting; no multi‑threading
+- No strict token accounting; parallelism is capped by `CODEX_MAX_PARALLEL_REQUESTS` (default 2)
 - CLI output format can evolve; we parse both JSON and text to remain resilient
 
 ## Troubleshooting

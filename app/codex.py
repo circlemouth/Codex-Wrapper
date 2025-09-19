@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Iterable, List, Optional
 
@@ -29,6 +30,33 @@ _PROFILE_FILES = (
     ("AGENTS.md", "codex_agents.md", ("agent.md",)),
     ("config.toml", "codex_config.toml", ("config.toml",)),
 )
+
+
+class _CodexConcurrencyLimiter:
+    """Limit how many Codex subprocesses run in parallel."""
+
+    def __init__(self, max_parallel: int) -> None:
+        self.configure(max_parallel)
+
+    def configure(self, max_parallel: int) -> None:
+        value = max(1, int(max_parallel or 1))
+        self._max_parallel = value
+        self._semaphore = asyncio.Semaphore(value)
+
+    @property
+    def max_parallel(self) -> int:
+        return self._max_parallel
+
+    @asynccontextmanager
+    async def slot(self) -> AsyncIterator[None]:
+        await self._semaphore.acquire()
+        try:
+            yield
+        finally:
+            self._semaphore.release()
+
+
+_parallel_limiter = _CodexConcurrencyLimiter(settings.max_parallel_requests)
 
 
 _TIMESTAMP_LINE = re.compile(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}]")
@@ -654,44 +682,46 @@ async def run_codex(
     cmd = _build_cmd_and_env(prompt, overrides, images, model)
     codex_env = _build_codex_env()
     output_filter = _CodexOutputFilter()
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=settings.codex_workdir,
-            env=codex_env,
-        )
-    except FileNotFoundError as e:
-        raise CodexError(
-            f"Failed to launch codex: {e}. Check CODEX_PATH and PATH."
-        )
-    except PermissionError as e:
-        raise CodexError(
-            f"Permission error launching codex: {e}. Ensure the binary is executable."
-        )
-    except Exception as e:
-        raise CodexError(f"Unable to start codex process: {e}")
 
-    try:
-        while True:
-            line = await proc.stdout.readline()
-            if not line:
-                break
-            filtered = output_filter.process(line.decode(errors="ignore"))
-            if filtered:
-                yield filtered
-        await asyncio.wait_for(proc.wait(), timeout=settings.timeout_seconds)
-        if proc.returncode != 0:
-            err = (await proc.stderr.read()).decode().strip()
-            raise CodexError(err or "codex execution failed")
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise CodexError("codex execution timed out")
-    finally:
-        if proc.returncode is None:
+    async with _parallel_limiter.slot():
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=settings.codex_workdir,
+                env=codex_env,
+            )
+        except FileNotFoundError as e:
+            raise CodexError(
+                f"Failed to launch codex: {e}. Check CODEX_PATH and PATH."
+            )
+        except PermissionError as e:
+            raise CodexError(
+                f"Permission error launching codex: {e}. Ensure the binary is executable."
+            )
+        except Exception as e:
+            raise CodexError(f"Unable to start codex process: {e}")
+
+        try:
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                filtered = output_filter.process(line.decode(errors="ignore"))
+                if filtered:
+                    yield filtered
+            await asyncio.wait_for(proc.wait(), timeout=settings.timeout_seconds)
+            if proc.returncode != 0:
+                err = (await proc.stderr.read()).decode().strip()
+                raise CodexError(err or "codex execution failed")
+        except asyncio.TimeoutError:
             proc.kill()
-            await proc.wait()
+            raise CodexError("codex execution timed out")
+        finally:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
 
 
 
@@ -713,30 +743,33 @@ async def run_codex_last_message(
         out_path = tf.name
     cmd = cmd + ["--json", "--output-last-message", out_path]
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=settings.codex_workdir,
-            env=codex_env,
-        )
-        stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=settings.timeout_seconds)
-        if proc.returncode != 0:
-            err = (stderr_data or b"").decode().strip() or "codex execution failed"
-            raise CodexError(err)
-        try:
-            with open(out_path, "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read()
-        except Exception:
-            text = ""
+        async with _parallel_limiter.slot():
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=settings.codex_workdir,
+                env=codex_env,
+            )
+            stdout_data, stderr_data = await asyncio.wait_for(
+                proc.communicate(), timeout=settings.timeout_seconds
+            )
+            if proc.returncode != 0:
+                err = (stderr_data or b"").decode().strip() or "codex execution failed"
+                raise CodexError(err)
+            try:
+                with open(out_path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+            except Exception:
+                text = ""
 
-        if not text:
-            # Fallback to any stdout text when the file is empty or missing.
-            text = (stdout_data or b"").decode(errors="ignore")
-        sanitized = _sanitize_codex_text(text)
-        if sanitized:
-            return sanitized
-        return text.strip()
+            if not text:
+                # Fallback to any stdout text when the file is empty or missing.
+                text = (stdout_data or b"").decode(errors="ignore")
+            sanitized = _sanitize_codex_text(text)
+            if sanitized:
+                return sanitized
+            return text.strip()
     except asyncio.TimeoutError:
         raise CodexError("codex execution timed out")
     finally:

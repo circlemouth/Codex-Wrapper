@@ -122,6 +122,7 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 詳細は `docs/IMPLEMENTATION_PLAN.ja.md` と `docs/AGENTS.md`（英語）を参照してください。
 
 > ストリーミング応答は Codex CLI の出力をそのまま転送します。バナーや警告を抑止したい場合は Codex 側のプロファイル／設定で制御してください。
+> API リクエストは `CODEX_MAX_PARALLEL_REQUESTS`（既定 2）で指定した上限まで並列実行されます。
 
 ### `/v1/models` で取得できるモデル一覧
 
@@ -158,6 +159,7 @@ Responses API 互換は最小実装済み（非ストリーム/ストリーム�
   - サーバーは `$CODEX_HOME/config.toml` の `model_providers` と組み込み `openai` プロバイダの `OPENAI_BASE_URL` を検証し、不明な設定は安全側で拒否します。
 - CODEX_ALLOW_DANGER_FULL_ACCESS: `0` または `1`（既定 `0`）。`1` にすると API から `x_codex.sandbox: "danger-full-access"` を要求できます。隔離環境以外では有効化しないでください。
 - CODEX_TIMEOUT: Codex 実行のサーバー側タイムアウト秒数（既定 120 秒）。
+- CODEX_MAX_PARALLEL_REQUESTS: Codex サブプロセスの同時実行数の上限（既定 2）。スループットを増やしたい場合は値を上げ、従来どおり 1 並列で運用したい場合は 1 を設定してください。
 - CODEX_ENV_FILE: 読み込む `.env` ファイルのパス。サーバー起動前に OS 環境変数として設定する必要があり、`.env` 内からは指定できません（既定 `.env`）。
 
 認証関連の補足
