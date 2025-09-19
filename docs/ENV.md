@@ -25,6 +25,7 @@ This project loads configuration via environment variables. It supports a `.env`
 - `CODEX_LOCAL_ONLY`: `0`/`1`. When `1`, the server rejects non‑local provider base URLs.
 - `CODEX_ALLOW_DANGER_FULL_ACCESS`: `0`/`1`. When `1`, the API may request `x_codex.sandbox=danger-full-access`.
 - `CODEX_TIMEOUT`: Server‑side timeout for Codex runs (seconds; default 120).
+- `CODEX_MAX_PARALLEL_REQUESTS`: Maximum number of Codex subprocesses that may run at once (default 2). Raise this to improve throughput or set `1` to keep the historical serial behaviour. Values `<1` are treated as `1`.
 - `CODEX_ENV_FILE`: Name of the env file to load (set as an OS env var).
 
 ### Model Selection
