@@ -2,7 +2,7 @@ import json
 import os
 import time
 import uuid
-from typing import AsyncIterator, List
+from typing import AsyncIterator, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,13 +17,19 @@ from .model_registry import (
     initialize_model_registry,
 )
 from .security import assert_local_only_or_raise
-from .prompt import build_prompt_and_images, normalize_responses_input
+from .prompt import (
+    build_prompt_and_images,
+    normalize_responses_input,
+    extract_function_call_payload,
+)
 from .images import save_image_to_temp
 from .schemas import (
     ChatChoice,
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatMessageResponse,
+    FunctionCallPayload,
+    FunctionCallRequest,
     ResponsesRequest,
     ResponsesObject,
     ResponsesMessage,
@@ -65,7 +71,20 @@ async def chat_completions(req: ChatCompletionRequest):
             },
         )
 
-    prompt, image_urls = build_prompt_and_images([m.dict() for m in req.messages])
+    function_defs = [f.model_dump() for f in req.functions] if req.functions else None
+    forced_function_call: Optional[str] = None
+    function_call_disabled = False
+    if isinstance(req.function_call, FunctionCallRequest):
+        forced_function_call = req.function_call.name
+    elif req.function_call == "none":
+        function_call_disabled = True
+
+    prompt, image_urls = build_prompt_and_images(
+        [m.model_dump() for m in req.messages],
+        functions=function_defs,
+        forced_function_call=forced_function_call,
+        function_call_disabled=function_call_disabled,
+    )
     x_overrides = req.x_codex.dict(exclude_none=True) if req.x_codex else {}
     if alias_effort and "reasoning_effort" not in x_overrides:
         x_overrides["reasoning_effort"] = alias_effort
@@ -96,23 +115,77 @@ async def chat_completions(req: ChatCompletionRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
+        function_call_supported = bool(function_defs)
+
         if req.stream:
             async def event_gen() -> AsyncIterator[bytes]:
+                buffered: List[str] = []
                 async for text in run_codex(prompt, overrides, image_paths, model=model_name):
-                    if text:
-                        chunk = {
+                    if not text:
+                        continue
+                    if function_call_supported:
+                        buffered.append(text)
+                        continue
+
+                    chunk = {
+                        "choices": [
+                            {"delta": {"content": text}, "index": 0, "finish_reason": None}
+                        ]
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n".encode()
+
+                if function_call_supported:
+                    combined = "".join(buffered)
+                    function_call_dict, cleaned_text = extract_function_call_payload(combined)
+
+                    if function_call_dict and not function_call_disabled:
+                        payload = FunctionCallPayload(**function_call_dict)
+                        delta_chunk = {
                             "choices": [
-                                {"delta": {"content": text}, "index": 0, "finish_reason": None}
+                                {"delta": {"function_call": payload.dict()}, "index": 0}
                             ]
                         }
-                        yield f"data: {json.dumps(chunk)}\n\n".encode()
+                        yield f"data: {json.dumps(delta_chunk)}\n\n".encode()
+                        finish_reason = "function_call"
+                    else:
+                        content_to_emit = cleaned_text if function_call_dict is None else combined
+                        if content_to_emit:
+                            chunk = {
+                                "choices": [
+                                    {"delta": {"content": content_to_emit}, "index": 0}
+                                ]
+                            }
+                            yield f"data: {json.dumps(chunk)}\n\n".encode()
+                        finish_reason = "stop"
+
+                    final_chunk = {
+                        "choices": [
+                            {"delta": {}, "index": 0, "finish_reason": finish_reason}
+                        ]
+                    }
+                    yield f"data: {json.dumps(final_chunk)}\n\n".encode()
+
                 yield b"data: [DONE]\n\n"
 
             return StreamingResponse(event_gen(), media_type="text/event-stream")
         else:
             final = await run_codex_last_message(prompt, overrides, image_paths, model=model_name)
+            function_call_dict = None
+            cleaned_text = final
+            if function_call_supported:
+                function_call_dict, cleaned_text = extract_function_call_payload(final)
+
+            if function_call_dict and not function_call_disabled:
+                payload = FunctionCallPayload(**function_call_dict)
+                message = ChatMessageResponse(content=None, function_call=payload)
+                finish_reason = "function_call"
+            else:
+                message_content = cleaned_text if function_call_dict is None else final
+                message = ChatMessageResponse(content=message_content)
+                finish_reason = "stop"
+
             resp = ChatCompletionResponse(
-                choices=[ChatChoice(message=ChatMessageResponse(content=final))]
+                choices=[ChatChoice(message=message, finish_reason=finish_reason)]
             )
             return resp
     except CodexError as e:

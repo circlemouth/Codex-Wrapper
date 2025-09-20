@@ -2,12 +2,30 @@ from typing import Any, Dict, List, Optional, Literal, Union
 from pydantic import BaseModel, Field
 
 
+class FunctionDefinition(BaseModel):
+    name: str
+    description: Optional[str] = None
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+
+
+class FunctionCallPayload(BaseModel):
+    name: str
+    arguments: Union[str, Dict[str, Any]]
+
+
+class FunctionCallRequest(BaseModel):
+    name: str
+
+
 class ChatMessage(BaseModel):
     role: str
     # Accept both legacy string content and the newer array-of-parts format
     # seen in modern OpenAI-compatible clients (e.g., [{type:"text", text:"..."}]).
     # Keep this permissive to avoid 422 for clients sending mixed shapes.
     content: Any
+    name: Optional[str] = None
+    tool_call_id: Optional[str] = None
+    function_call: Optional[FunctionCallPayload] = None
 
 
 class XCodexOptions(BaseModel):
@@ -24,11 +42,14 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
     x_codex: Optional[XCodexOptions] = None
+    functions: Optional[List[FunctionDefinition]] = None
+    function_call: Optional[Union[Literal["auto"], Literal["none"], FunctionCallRequest]] = None
 
 
 class ChatMessageResponse(BaseModel):
     role: str = "assistant"
-    content: str
+    content: Optional[str] = None
+    function_call: Optional[FunctionCallPayload] = None
 
 
 class ChatChoice(BaseModel):
