@@ -120,6 +120,7 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="YOUR_PROXY_API_KEY
 See `docs/IMPLEMENTATION_PLAN.ja.md` (Japanese) and `docs/AGENTS.md` for details.
 
 > Streaming responses now forward Codex CLI output verbatim. Adjust your Codex profile/config if you want to suppress banners or warnings.
+> Requests are executed concurrently up to the configured `CODEX_MAX_PARALLEL_REQUESTS` limit (default 2).
 
 ### Models exposed by `/v1/models`
 
@@ -130,7 +131,8 @@ Sample response on 2025-09-18 (call the endpoint in your environment to confirm)
 
 You can append ` minimal` / ` low` / ` medium` / ` high` to any of the above IDs to override reasoning effort inline (for example: `gpt-5-codex high`).
 
- Minimal Responses API compatibility (non‑stream/stream) is implemented; see `docs/RESPONSES_API_PLAN.ja.md` (Japanese) for details and future work.
+Minimal Responses API compatibility (non‑stream/stream) is implemented; see `docs/RESPONSES_API_PLAN.ja.md` (Japanese) for details and future work.
+Structured output features such as `response_format`/JSON Schema are not supported because the Codex CLI only returns plain text and this wrapper normalizes those results into strings.
 
 ## Environment Variables (Authoritative)
 
@@ -156,6 +158,7 @@ This server reads `.env` and uses the following variables. Example values and co
 - CODEX_ALLOW_DANGER_FULL_ACCESS: `0`/`1` (default `0`). When `1`, the API may request `x_codex.sandbox: "danger-full-access"`.
   - Safety note: Only set `1` inside isolated containers/VMs.
 - CODEX_TIMEOUT: Server‑side timeout (seconds) for Codex runs (default 120).
+- CODEX_MAX_PARALLEL_REQUESTS: Maximum Codex subprocesses allowed at once (default 2). Increase the value to serve more concurrent API calls or set to `1` to restore the previous serial behaviour.
 - CODEX_ENV_FILE: Path to the `.env` file to load. Must be set as an OS env var before the server starts (do not place this inside `.env`). Defaults to `.env`.
 
 Auth notes

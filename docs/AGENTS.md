@@ -48,6 +48,7 @@ Notes
     - `Content-Type: text/event-stream`
     - Lines as `data: {chunk}`, end with `data: [DONE]`
     - JSON lines are preferred; we emit their `text`/`content` as `choices[0].delta.content`. Non‑JSON lines are concatenated as text fallback.
+  - Structured output features such as `response_format`/JSON Schema are not supported because the Codex CLI emits plain text and the wrapper normalizes those values into strings.
 
 ## Examples (Python / OpenAI SDK)
 
@@ -270,7 +271,7 @@ git submodule update --remote submodules/codex
 ## Limitations (initial)
 
  - No tool/function calling; no audio
-- No strict token accounting; no multi‑threading
+- No strict token accounting; parallelism is capped by `CODEX_MAX_PARALLEL_REQUESTS` (default 2)
 - CLI output format can evolve; we parse both JSON and text to remain resilient
 
 ## Troubleshooting
