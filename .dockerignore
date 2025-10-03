@@ -1,0 +1,14 @@
+.git
+.gitmodules
+.gitignore
+__pycache__
+*.py[cod]
+*.swp
+.env
+.env.*
+.venv
+venv
+workspace/*
+!workspace/codex_profile/
+.docs_cache
+*.log
