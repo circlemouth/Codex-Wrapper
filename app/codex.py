@@ -534,8 +534,12 @@ def _build_cmd_and_env(
     overrides: Optional[Dict] = None,
     images: Optional[List[str]] = None,
     model: Optional[str] = None,
-) -> list[str]:
-    """Build base `codex exec` command with configs and optional images."""
+) -> tuple[list[str], str]:
+    """Build base `codex exec` command with configs and optional images.
+
+    Returns (cmd, prompt_text).  The prompt is passed via stdin (using
+    ``-`` as positional arg) to avoid OS "Argument list too long" errors.
+    """
     cfg = {
         "sandbox_mode": settings.sandbox_mode,
         "hide_agent_reasoning": settings.hide_reasoning,
@@ -573,7 +577,7 @@ def _build_cmd_and_env(
     _ensure_workdir_exists()
 
     # Note: Rust CLI does not support `-q`. Use human output or JSON mode selectively.
-    cmd = [exe, "exec", prompt, "--color", "never"]
+    cmd = [exe, "exec", "-", "--color", "never"]
     if _WORKDIR_NEEDS_SKIP_GIT_CHECK:
         cmd.append("--skip-git-repo-check")
     if images:
@@ -618,7 +622,7 @@ def _build_cmd_and_env(
             toml_bool = "true" if allow_network else "false"
             cmd += ["--config", f"sandbox_workspace_write={{ network_access = {toml_bool} }}"]
 
-    return cmd
+    return cmd, prompt
 
 
 @lru_cache(maxsize=1)
@@ -943,7 +947,7 @@ async def run_codex(
     model: Optional[str] = None,
 ) -> AsyncIterator[str]:
     """Run codex CLI as async generator yielding stdout lines suitable for SSE."""
-    cmd = _build_cmd_and_env(prompt, overrides, images, model)
+    cmd, prompt_text = _build_cmd_and_env(prompt, overrides, images, model)
     codex_env = _build_codex_env()
     output_filter = _CodexOutputFilter()
 
@@ -951,6 +955,7 @@ async def run_codex(
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.codex_workdir,
@@ -967,6 +972,12 @@ async def run_codex(
             )
         except Exception as e:
             raise CodexError(f"Unable to start codex process: {e}")
+
+        # Feed the prompt via stdin to avoid OS arg-length limits.
+        proc.stdin.write(prompt_text.encode())
+        await proc.stdin.drain()
+        proc.stdin.close()
+        await proc.stdin.wait_closed()
 
         raw_lines: List[str] = []
         try:
@@ -1005,7 +1016,7 @@ async def run_codex_last_message(
 
     This avoids human oriented headers and logs from the CLI.
     """
-    cmd = _build_cmd_and_env(prompt, overrides, images, model)
+    cmd, prompt_text = _build_cmd_and_env(prompt, overrides, images, model)
     # Create temp file in workdir to ensure permissions
     _ensure_workdir_exists()
     codex_env = _build_codex_env()
@@ -1016,6 +1027,7 @@ async def run_codex_last_message(
         async with _parallel_limiter.slot():
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.codex_workdir,
@@ -1023,7 +1035,7 @@ async def run_codex_last_message(
                 limit=_ASYNCIO_STREAM_LIMIT,
             )
             stdout_data, stderr_data = await asyncio.wait_for(
-                proc.communicate(), timeout=settings.timeout_seconds
+                proc.communicate(input=prompt_text.encode()), timeout=settings.timeout_seconds
             )
         if proc.returncode != 0:
             stdout_text = (stdout_data or b"").decode(errors="ignore")
